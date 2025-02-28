@@ -50,6 +50,11 @@ class FileMakerHook:
         self.filemaker_conn_id = filemaker_conn_id
         self.auth = None
         self.log = logging.getLogger(__name__)
+        self._cached_token = None
+        self.cognito_idp_client = None
+        self.user_pool_id = None
+        self.client_id = None
+        self.region = None
 
         # If connection ID is provided, get connection info
         if filemaker_conn_id:
@@ -647,10 +652,57 @@ class FileMakerHook:
         # Return the binary content
         return response.content
 
-    def _request_with_retry(self, endpoint, headers=None, method="GET", data=None, max_retries=3, retry_delay=1):
+    def _execute_request(self, endpoint, headers=None, method="GET", data=None):
+        """
+        Execute an HTTP request with proper error handling.
+
+        :param endpoint: The endpoint URL
+        :type endpoint: str
+        :param headers: HTTP headers
+        :type headers: Dict[str, str]
+        :param method: HTTP method (GET, POST, etc.)
+        :type method: str
+        :param data: Request data for POST/PUT methods
+        :type data: Any
+        :return: Response object or content
+        :rtype: Any
+        """
+        try:
+            if method.upper() == "GET":
+                response = requests.get(endpoint, headers=headers)
+            elif method.upper() == "POST":
+                response = requests.post(endpoint, headers=headers, json=data)
+            elif method.upper() == "PUT":
+                response = requests.put(endpoint, headers=headers, json=data)
+            elif method.upper() == "DELETE":
+                response = requests.delete(endpoint, headers=headers)
+            else:
+                raise ValueError(f"Unsupported HTTP method: {method}")
+
+            response.raise_for_status()
+            return response
+
+        except requests.exceptions.RequestException as e:
+            self.log.error(f"Request error: {str(e)}")
+            raise AirflowException(f"Request failed: {str(e)}")
+        except Exception as e:
+            self.log.error(f"Unexpected error: {str(e)}")
+            raise AirflowException(f"Unexpected error: {str(e)}")
+
+    def _request_with_retry(
+        self,
+        endpoint,
+        headers=None,
+        method="GET",
+        data=None,
+        max_retries=3,
+        retry_delay=1,
+    ):
         try:
             # Try to execute the request with the retry logic
             return self._execute_request(endpoint, headers, method, data)
         except Exception as e:
-            self.log.error(f"Error making request after {max_retries} retries: {str(e)}")
+            self.log.error(
+                f"Error making request after {max_retries} retries: {str(e)}"
+            )
             raise AirflowException(f"Failed to execute request: {str(e)}")

@@ -148,7 +148,7 @@ class FileMakerExtractOperator(BaseOperator):
         import os
         import json
         import csv
-        
+
         # Create directory if it doesn't exist
         os.makedirs(os.path.dirname(self.output_path), exist_ok=True)
 
