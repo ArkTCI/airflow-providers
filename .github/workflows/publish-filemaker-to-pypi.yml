@@ -132,7 +132,7 @@ jobs:
       id: cache-pip-deploy
       with:
         path: ~/.cache/pip
-        key: ${{ runner.os }}-pip-deploy-${{ hashFiles('filemaker/requirements.txt') }}
+        key: ${{ runner.os }}-pip-deploy-${{ hashFiles('filemaker/requirements.txt', 'filemaker/requirements-dev.txt') }}
         restore-keys: |
           ${{ runner.os }}-pip-deploy-
         
@@ -140,6 +140,7 @@ jobs:
       run: |
         python -m pip install --upgrade pip
         pip install -r requirements.txt
+        pip install build twine wheel
         
     - name: Build package
       run: |
