@@ -96,11 +96,12 @@ jobs:
       run: |
         python -m pip install --upgrade pip
         pip install -r requirements.txt
+        pip install -r requirements-dev.txt
         pip install -e .
         
     - name: Test with pytest
       run: |
-        pytest --cov=filemaker tests/ --cov-report=xml
+        pytest --cov=filemaker test_*.py --cov-report=xml
         
     - name: Upload coverage to Codecov
       uses: codecov/codecov-action@v3
