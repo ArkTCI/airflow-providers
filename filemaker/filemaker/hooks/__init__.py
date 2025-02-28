@@ -2,7 +2,7 @@
 Hooks for FileMaker Cloud integration.
 """
 
-from .filemaker import FileMakerHook
 from .connection import FileMakerConnection
+from .filemaker import FileMakerHook
 
-__all__ = ['FileMakerHook', 'FileMakerConnection'] 
+__all__ = ["FileMakerHook", "FileMakerConnection"]
