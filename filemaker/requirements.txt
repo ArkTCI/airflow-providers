@@ -1,20 +1,5 @@
-# Runtime dependencies
+# Runtime dependencies - only what's needed for the provider to function
 apache-airflow>=2.0.0
 boto3>=1.16.0
 requests>=2.25.0
-pandas>=1.0.0
-
-# Testing dependencies
-pytest>=7.0.0
-pytest-cov>=2.12.1
-mock>=4.0.0
-moto>=4.0.0
-
-# Linting and code quality
-flake8>=5.0.0
-pylint>=2.14.0
-
-# Packaging and distribution
-build>=0.8.0
-twine>=4.0.0
-wheel>=0.37.0 
+pandas>=1.0.0 
