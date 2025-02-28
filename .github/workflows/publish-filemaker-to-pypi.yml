@@ -27,6 +27,15 @@ jobs:
       with:
         python-version: '3.9'
         
+    - name: Cache Python dependencies
+      uses: actions/cache@v3
+      id: cache-pip
+      with:
+        path: ~/.cache/pip
+        key: ${{ runner.os }}-pip-${{ hashFiles('filemaker/requirements.txt', 'filemaker/requirements-dev.txt') }}
+        restore-keys: |
+          ${{ runner.os }}-pip-
+        
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
@@ -36,8 +45,10 @@ jobs:
         
     - name: Lint with flake8
       run: |
+        # Critical errors only
         flake8 filemaker/ --count --select=E9,F63,F7,F82 --show-source --statistics
-        flake8 filemaker/ --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
+        # Use project config for the rest
+        flake8 filemaker/ --count --exit-zero --statistics
         
     - name: Lint with pylint
       run: |
@@ -45,10 +56,12 @@ jobs:
         
     - name: Check formatting with black
       run: |
+        # Uses pyproject.toml configuration
         black --check filemaker/
         
     - name: Check imports with isort
       run: |
+        # Uses pyproject.toml configuration
         isort --check-only --profile black filemaker/
         
   test:
@@ -68,6 +81,16 @@ jobs:
       uses: actions/setup-python@v4
       with:
         python-version: ${{ matrix.python-version }}
+        
+    - name: Cache Python dependencies
+      uses: actions/cache@v3
+      id: cache-pip-test
+      with:
+        path: ~/.cache/pip
+        key: ${{ runner.os }}-pip-${{ matrix.python-version }}-${{ hashFiles('filemaker/requirements.txt') }}
+        restore-keys: |
+          ${{ runner.os }}-pip-${{ matrix.python-version }}-
+          ${{ runner.os }}-pip-
         
     - name: Install dependencies
       run: |
@@ -102,6 +125,15 @@ jobs:
       uses: actions/setup-python@v4
       with:
         python-version: '3.9'
+        
+    - name: Cache Python dependencies
+      uses: actions/cache@v3
+      id: cache-pip-deploy
+      with:
+        path: ~/.cache/pip
+        key: ${{ runner.os }}-pip-deploy-${{ hashFiles('filemaker/requirements.txt') }}
+        restore-keys: |
+          ${{ runner.os }}-pip-deploy-
         
     - name: Install dependencies
       run: |
