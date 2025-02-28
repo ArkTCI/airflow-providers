@@ -64,9 +64,7 @@ class FileMakerQueryOperator(BaseOperator):
         self.log.info(f"Full URL: {full_url}")
 
         # Execute query
-        result = hook.get_odata_response(
-            endpoint=full_url, accept_format=self.accept_format
-        )
+        result = hook.get_odata_response(endpoint=full_url, accept_format=self.accept_format)
 
         return result
 
@@ -221,9 +219,7 @@ class FileMakerSchemaOperator(BaseOperator):
         self.log.info(f"Metadata URL: {metadata_url}")
 
         # Get the metadata XML
-        xml_content = hook.get_odata_response(
-            endpoint=metadata_url, accept_format="application/xml"
-        )
+        xml_content = hook.get_odata_response(endpoint=metadata_url, accept_format="application/xml")
 
         # Parse the XML schema
         schema = self._parse_xml_schema(xml_content)
@@ -301,9 +297,7 @@ class FileMakerSchemaOperator(BaseOperator):
             for entity_type in root.findall(".//edm:EntityType", namespaces):
                 source_entity = entity_type.get("Name")
 
-                for nav_prop in entity_type.findall(
-                    "./edm:NavigationProperty", namespaces
-                ):
+                for nav_prop in entity_type.findall("./edm:NavigationProperty", namespaces):
                     target_type = nav_prop.get("Type")
                     # Handle both EntityType and Collection(EntityType)
                     if target_type.startswith("Collection("):

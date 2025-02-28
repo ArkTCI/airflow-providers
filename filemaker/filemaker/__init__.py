@@ -19,9 +19,7 @@ def get_provider_info():
         "package-name": "arktci-airflow-provider-filemaker",
         "name": "FileMaker Cloud",
         "description": "Provider for FileMaker Cloud OData API integration, including custom Cognito authentication.",
-        "hook-class-names": [
-            "airflow.providers.filemaker.hooks.filemaker.FileMakerHook"
-        ],
+        "hook-class-names": ["airflow.providers.filemaker.hooks.filemaker.FileMakerHook"],
         "connection-types": [
             {
                 "connection-type": "filemaker",

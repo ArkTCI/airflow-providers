@@ -25,9 +25,7 @@ class FileMakerCloudAuth:
     :type region: Optional[str]
     """
 
-    def __init__(
-        self, username: str, password: str, host: str, region: Optional[str] = None
-    ) -> None:
+    def __init__(self, username: str, password: str, host: str, region: Optional[str] = None) -> None:
         self.username = username
         self.password = password
         self.host = host
@@ -78,9 +76,7 @@ class FileMakerCloudAuth:
         """
         if not self.client:
             if self.region:
-                self.log.info(
-                    f"Initializing boto3 Cognito client in region {self.region}"
-                )
+                self.log.info(f"Initializing boto3 Cognito client in region {self.region}")
                 self.client = boto3.client("cognito-idp", region_name=self.region)
             else:
                 self.log.info("Initializing boto3 Cognito client with default region")

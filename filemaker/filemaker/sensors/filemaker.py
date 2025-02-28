@@ -51,8 +51,7 @@ class FileMakerDataSensor(BaseSensorOperator):
         # Validate comparison operator
         if self.comparison_operator not in (">=", "==", ">", "<", "<="):
             raise ValueError(
-                f"Invalid comparison operator: {self.comparison_operator}. "
-                "Must be one of '>=', '==', '>', '<', '<='"
+                f"Invalid comparison operator: {self.comparison_operator}. " "Must be one of '>=', '==', '>', '<', '<='"
             )
 
     def poke(self, context) -> bool:
@@ -75,18 +74,12 @@ class FileMakerDataSensor(BaseSensorOperator):
 
         # Get the count of records matching the condition
         try:
-            count = int(
-                hook.get_odata_response(endpoint=endpoint, accept_format="text/plain")
-            )
+            count = int(hook.get_odata_response(endpoint=endpoint, accept_format="text/plain"))
 
-            self.log.info(
-                f"Found {count} records (expected {self.comparison_operator} {self.expected_count})"
-            )
+            self.log.info(f"Found {count} records (expected {self.comparison_operator} {self.expected_count})")
 
             # Evaluate the condition using the specified comparison operator
-            result = self._evaluate_condition(
-                count, self.expected_count, self.comparison_operator
-            )
+            result = self._evaluate_condition(count, self.expected_count, self.comparison_operator)
             return result
 
         except Exception as e:
@@ -174,18 +167,12 @@ class FileMakerChangeSensor(BaseSensorOperator):
         condition = f"{self.modified_field} gt {self.last_modified_ts}"
         endpoint = f"{base_url}/{self.table}/$count?$filter={condition}"
 
-        self.log.info(
-            f"Checking for changes since {self.last_modified_ts} with endpoint: {endpoint}"
-        )
+        self.log.info(f"Checking for changes since {self.last_modified_ts} with endpoint: {endpoint}")
 
         try:
-            count = int(
-                hook.get_odata_response(endpoint=endpoint, accept_format="text/plain")
-            )
+            count = int(hook.get_odata_response(endpoint=endpoint, accept_format="text/plain"))
 
-            self.log.info(
-                f"Found {count} modified records since {self.last_modified_ts}"
-            )
+            self.log.info(f"Found {count} modified records since {self.last_modified_ts}")
 
             # If we have new records, update the timestamp before returning
             if count > 0:
@@ -221,9 +208,7 @@ class FileMakerChangeSensor(BaseSensorOperator):
                 self.xcom_push(context=None, key="last_modified_ts", value=latest_ts)
                 self.last_modified_ts = latest_ts
             else:
-                self.log.warning(
-                    f"No records found in {self.table} to establish baseline timestamp"
-                )
+                self.log.warning(f"No records found in {self.table} to establish baseline timestamp")
 
         except Exception as e:
             self.log.error(f"Error setting baseline timestamp: {str(e)}")

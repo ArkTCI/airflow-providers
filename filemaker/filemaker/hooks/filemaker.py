@@ -104,9 +104,7 @@ class FileMakerHook:
             if not self.host or not self.username or not self.password:
                 raise ValueError("Host, username, and password must be provided")
 
-            self.auth = FileMakerCloudAuth(
-                username=self.username, password=self.password, host=self.host
-            )
+            self.auth = FileMakerCloudAuth(username=self.username, password=self.password, host=self.host)
 
         try:
             # Try to get the token from AWS Cognito
@@ -144,9 +142,7 @@ class FileMakerHook:
 
         # Check response
         if response.status_code >= 400:
-            raise Exception(
-                f"OData API error: {response.status_code} - {response.text}"
-            )
+            raise Exception(f"OData API error: {response.status_code} - {response.text}")
 
         # Return appropriate format based on accept header
         if accept_format == "application/json":
@@ -207,9 +203,7 @@ class FileMakerHook:
         :return: Dict containing Region, UserPool_ID, Client_ID, API_Host, and FCC_Host
         :rtype: Dict[str, str]
         """
-        endpoint_url = (
-            "https://www.ifmcloud.com/endpoint/userpool/2.2.0.my.claris.com.json"
-        )
+        endpoint_url = "https://www.ifmcloud.com/endpoint/userpool/2.2.0.my.claris.com.json"
         self.log.info(f"Retrieving Cognito pool information from: {endpoint_url}")
 
         try:
@@ -218,9 +212,7 @@ class FileMakerHook:
 
             data = response.json()
             if data.get("errcode") != "Ok":
-                raise AirflowException(
-                    f"Error retrieving pool info: {data.get('errmessage')}"
-                )
+                raise AirflowException(f"Error retrieving pool info: {data.get('errmessage')}")
 
             pool_info = data.get("data", {})
             self.log.info(
@@ -233,13 +225,9 @@ class FileMakerHook:
 
         except Exception as e:
             self.log.error(f"Error retrieving pool info: {str(e)}")
-            raise AirflowException(
-                f"Failed to retrieve Cognito pool information: {str(e)}"
-            )
+            raise AirflowException(f"Failed to retrieve Cognito pool information: {str(e)}")
 
-    def get_fmid_token(
-        self, username: Optional[str] = None, password: Optional[str] = None
-    ) -> str:
+    def get_fmid_token(self, username: Optional[str] = None, password: Optional[str] = None) -> str:
         """
         Get FileMaker ID token - direct equivalent to getFMIDToken in JS
 
@@ -256,15 +244,11 @@ class FileMakerHook:
         if self._cached_token:
             return self._cached_token
 
-        auth_result = self.authenticate_user(
-            username or self.username, password or self.password
-        )
+        auth_result = self.authenticate_user(username or self.username, password or self.password)
         self._cached_token = auth_result.get("id_token")
         return self._cached_token
 
-    def authenticate_user(
-        self, username: str, password: str, mfa_code: Optional[str] = None
-    ) -> Dict[str, str]:
+    def authenticate_user(self, username: str, password: str, mfa_code: Optional[str] = None) -> Dict[str, str]:
         """
         Authenticate user and retrieve all tokens
 
@@ -289,31 +273,19 @@ class FileMakerHook:
                 self.user_pool_id = pool_info["UserPool_ID"]
                 self.client_id = pool_info["Client_ID"]
                 self.region = pool_info["Region"]
-                self.cognito_idp_client = boto3.client(
-                    "cognito-idp", region_name=self.region
-                )
+                self.cognito_idp_client = boto3.client("cognito-idp", region_name=self.region)
 
             # This implementation follows the official Claris documentation
-            auth_result = self._authenticate_js_sdk_equivalent(
-                username, password, mfa_code
-            )
+            auth_result = self._authenticate_js_sdk_equivalent(username, password, mfa_code)
 
             # Parse the response similar to the JS SDK
             tokens = {
-                "access_token": auth_result.get(
-                    "AccessToken"
-                ),  # Equivalent to result.getAccessToken().getJwtToken()
-                "id_token": auth_result.get(
-                    "IdToken"
-                ),  # Equivalent to result.idToken.jwtToken
-                "refresh_token": auth_result.get(
-                    "RefreshToken"
-                ),  # Equivalent to result.refreshToken.token
+                "access_token": auth_result.get("AccessToken"),  # Equivalent to result.getAccessToken().getJwtToken()
+                "id_token": auth_result.get("IdToken"),  # Equivalent to result.idToken.jwtToken
+                "refresh_token": auth_result.get("RefreshToken"),  # Equivalent to result.refreshToken.token
             }
 
-            self.log.info(
-                "Authentication successful. Retrieved access, ID, and refresh tokens."
-            )
+            self.log.info("Authentication successful. Retrieved access, ID, and refresh tokens.")
             return tokens
 
         except Exception as e:
@@ -338,15 +310,11 @@ class FileMakerHook:
                         # If the method only returned the ID token
                         return {"id_token": result}
                 except Exception as fallback_error:
-                    self.log.error(
-                        f"{method_name} fallback failed: {str(fallback_error)}"
-                    )
+                    self.log.error(f"{method_name} fallback failed: {str(fallback_error)}")
                     continue
 
             # All methods failed
-            raise AirflowException(
-                f"All authentication methods failed. Original error: {str(e)}"
-            )
+            raise AirflowException(f"All authentication methods failed. Original error: {str(e)}")
 
     def refresh_token(self, refresh_token: str) -> Dict[str, str]:
         """
@@ -449,14 +417,10 @@ class FileMakerHook:
 
             if challenge_name in ["SMS_MFA", "SOFTWARE_TOKEN_MFA"]:
                 if not mfa_code:
-                    raise AirflowException(
-                        f"MFA is required ({challenge_name}). Please provide an MFA code."
-                    )
+                    raise AirflowException(f"MFA is required ({challenge_name}). Please provide an MFA code.")
 
                 # Handle MFA challenge similar to JS SDK's sendMFACode
-                return self._respond_to_auth_challenge(
-                    username, challenge_name, mfa_code, response_json
-                )
+                return self._respond_to_auth_challenge(username, challenge_name, mfa_code, response_json)
             elif challenge_name == "NEW_PASSWORD_REQUIRED":
                 raise AirflowException(
                     "Account requires password change. Please update password through the FileMaker Cloud portal."
@@ -518,9 +482,7 @@ class FileMakerHook:
             "Session": challenge_response.get("Session"),
         }
 
-        self.log.info(
-            f"Responding to auth challenge ({challenge_name}) with verification code"
-        )
+        self.log.info(f"Responding to auth challenge ({challenge_name}) with verification code")
 
         response = requests.post(auth_url, headers=headers, json=payload)
 
@@ -540,9 +502,7 @@ class FileMakerHook:
         self.log.info("MFA verification successful")
         return auth_result
 
-    def _authenticate_user_password(
-        self, username: str, password: str
-    ) -> Dict[str, Any]:
+    def _authenticate_user_password(self, username: str, password: str) -> Dict[str, Any]:
         """
         Authenticate using USER_PASSWORD_AUTH flow
 
@@ -643,9 +603,7 @@ class FileMakerHook:
 
         # Check for errors
         if response.status_code >= 400:
-            raise Exception(
-                f"OData API error retrieving binary field: {response.status_code} - {response.text}"
-            )
+            raise Exception(f"OData API error retrieving binary field: {response.status_code} - {response.text}")
 
         # Return the binary content
         return response.content
@@ -700,7 +658,5 @@ class FileMakerHook:
             # Try to execute the request with the retry logic
             return self._execute_request(endpoint, headers, method, data)
         except Exception as e:
-            self.log.error(
-                f"Error making request after {max_retries} retries: {str(e)}"
-            )
+            self.log.error(f"Error making request after {max_retries} retries: {str(e)}")
             raise AirflowException(f"Failed to execute request: {str(e)}")
