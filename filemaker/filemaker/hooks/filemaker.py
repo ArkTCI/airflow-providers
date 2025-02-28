@@ -2,19 +2,17 @@
 FileMaker Cloud OData Hook for interacting with FileMaker Cloud.
 """
 
+import json
 import logging
 from typing import Any, Dict, Optional, Union
 
 import boto3
 import requests
 from airflow.exceptions import AirflowException
-import json
+from airflow.hooks.base import BaseHook
 
 # Import the auth module
 from ..auth.cognitoauth import FileMakerCloudAuth
-
-# Import BaseHook here to avoid circular imports
-from airflow.hooks.base import BaseHook
 
 
 class FileMakerHook:

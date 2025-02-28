@@ -145,9 +145,9 @@ class FileMakerExtractOperator(BaseOperator):
         :param data: The data to save
         :type data: Dict[str, Any]
         """
-        import os
-        import json
         import csv
+        import json
+        import os
 
         # Create directory if it doesn't exist
         os.makedirs(os.path.dirname(self.output_path), exist_ok=True)
@@ -230,8 +230,8 @@ class FileMakerSchemaOperator(BaseOperator):
 
         # Save the schema if output path is provided
         if self.output_path:
-            import os
             import json
+            import os
 
             os.makedirs(os.path.dirname(self.output_path), exist_ok=True)
             with open(self.output_path, "w") as f:
