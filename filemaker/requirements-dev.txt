@@ -1,0 +1,14 @@
+# Include all runtime dependencies
+-r requirements.txt
+
+# Additional development tools
+black>=22.0.0   # Code formatter
+isort>=5.10.0   # Import sorter
+mypy>=0.950     # Type checker
+pre-commit>=2.19.0  # Pre-commit hooks
+coverage>=6.4.0  # Coverage reporting
+
+# Documentation
+sphinx>=5.0.0
+sphinx-rtd-theme>=1.0.0
+sphinx-autoapi>=1.9.0 
