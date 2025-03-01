@@ -3,11 +3,11 @@ name: Publish FileMaker Provider to PyPI
 on:
   push:
     paths:
-      - 'providers/filemaker/**'
+      - 'filemaker/**'
       - '.github/workflows/publish-filemaker-to-pypi.yml'
   pull_request:
     paths:
-      - 'providers/filemaker/**'
+      - 'filemaker/**'
       - '.github/workflows/publish-filemaker-to-pypi.yml'
   release:
     types: [created]
@@ -18,7 +18,7 @@ jobs:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: providers/filemaker
+        working-directory: filemaker
     steps:
     - uses: actions/checkout@v3
     
@@ -40,7 +40,7 @@ jobs:
       id: cache-pip
       with:
         path: ~/.cache/pip
-        key: ${{ runner.os }}-pip-${{ hashFiles('providers/filemaker/requirements.txt', 'providers/filemaker/requirements-dev.txt') }}
+        key: ${{ runner.os }}-pip-${{ hashFiles('filemaker/requirements.txt', 'filemaker/requirements-dev.txt') }}
         restore-keys: |
           ${{ runner.os }}-pip-
         
@@ -77,7 +77,7 @@ jobs:
     needs: quality
     defaults:
       run:
-        working-directory: providers/filemaker
+        working-directory: filemaker
     strategy:
       matrix:
         python-version: ['3.8', '3.9', '3.10']
@@ -95,7 +95,7 @@ jobs:
       id: cache-pip-test
       with:
         path: ~/.cache/pip
-        key: ${{ runner.os }}-pip-${{ matrix.python-version }}-${{ hashFiles('providers/filemaker/requirements.txt') }}
+        key: ${{ runner.os }}-pip-${{ matrix.python-version }}-${{ hashFiles('filemaker/requirements.txt') }}
         restore-keys: |
           ${{ runner.os }}-pip-${{ matrix.python-version }}-
           ${{ runner.os }}-pip-
@@ -139,7 +139,7 @@ jobs:
     needs: test
     defaults:
       run:
-        working-directory: providers/filemaker
+        working-directory: filemaker
     permissions:
       contents: read
       id-token: write  # IMPORTANT: this permission is required for trusted publishing
@@ -157,7 +157,7 @@ jobs:
       id: cache-pip-deploy
       with:
         path: ~/.cache/pip
-        key: ${{ runner.os }}-pip-deploy-${{ hashFiles('providers/filemaker/requirements.txt', 'providers/filemaker/requirements-dev.txt') }}
+        key: ${{ runner.os }}-pip-deploy-${{ hashFiles('filemaker/requirements.txt', 'filemaker/requirements-dev.txt') }}
         restore-keys: |
           ${{ runner.os }}-pip-deploy-
         
@@ -178,7 +178,7 @@ jobs:
     - name: Publish package to PyPI
       uses: pypa/gh-action-pypi-publish@release/v1
       with:
-        packages-dir: providers/filemaker/dist/
+        packages-dir: filemaker/dist/
         password: ${{ secrets.PYPI_API_TOKEN }}
         skip-existing: true
         verbose: true 
