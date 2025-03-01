@@ -48,7 +48,7 @@ jobs:
         run: |
           cd filemaker
           # Extract version from existing file
-          VERSION=$(grep -o '"[0-9]\+\.[0-9]\+\.[0-9]\+"' src/airflow/providers/filemaker/version.py | tr -d '"')
+          VERSION=$(grep -o '"[0-9]\+\.[0-9]\+\.[0-9]\+"' version.py | tr -d '"')
           echo "VERSION=$VERSION" > version.txt
 
       - name: Run version bump script
@@ -59,14 +59,14 @@ jobs:
           bump2version ${{ github.event.inputs.bump_type || 'patch' }}
           
           # Read the new version
-          NEW_VERSION=$(grep -o '"[0-9]\+\.[0-9]\+\.[0-9]\+"' src/airflow/providers/filemaker/version.py | tr -d '"')
+          NEW_VERSION=$(grep -o '"[0-9]\+\.[0-9]\+\.[0-9]\+"' version.py | tr -d '"')
           echo "new_version=${NEW_VERSION}" >> $GITHUB_OUTPUT
           
           # Update version.txt
           echo "VERSION=${NEW_VERSION}" > version.txt
           
           # Commit the changes
-          git add version.txt src/airflow/providers/filemaker/version.py
+          git add version.txt version.py provider.yaml setup.py
           git commit -m "Bump version to ${NEW_VERSION}"
 
       - name: Create release branch
