@@ -3,11 +3,11 @@ name: Publish FileMaker Provider to PyPI
 on:
   push:
     paths:
-      - 'filemaker/**'
+      - 'providers/filemaker/**'
       - '.github/workflows/publish-filemaker-to-pypi.yml'
   pull_request:
     paths:
-      - 'filemaker/**'
+      - 'providers/filemaker/**'
       - '.github/workflows/publish-filemaker-to-pypi.yml'
   release:
     types: [created]
@@ -18,7 +18,7 @@ jobs:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: filemaker
+        working-directory: providers/filemaker
     steps:
     - uses: actions/checkout@v3
     
@@ -27,12 +27,20 @@ jobs:
       with:
         python-version: '3.9'
         
+    - name: Debug environment
+      run: |
+        pwd
+        ls -la
+        find . -type d -maxdepth 3
+        python -c "import sys; print(sys.path)"
+        ls -la src/airflow/providers/filemaker/hooks/ || echo "Hooks directory not found"
+        
     - name: Cache Python dependencies
       uses: actions/cache@v3
       id: cache-pip
       with:
         path: ~/.cache/pip
-        key: ${{ runner.os }}-pip-${{ hashFiles('filemaker/requirements.txt', 'filemaker/requirements-dev.txt') }}
+        key: ${{ runner.os }}-pip-${{ hashFiles('providers/filemaker/requirements.txt', 'providers/filemaker/requirements-dev.txt') }}
         restore-keys: |
           ${{ runner.os }}-pip-
         
@@ -46,30 +54,30 @@ jobs:
     - name: Lint with flake8
       run: |
         # Critical errors only
-        flake8 filemaker/ --count --select=E9,F63,F7,F82 --show-source --statistics
+        flake8 src/ --count --select=E9,F63,F7,F82 --show-source --statistics
         # Use project config for the rest
-        flake8 filemaker/ --count --exit-zero --statistics
+        flake8 src/ --count --exit-zero --statistics
         
     - name: Lint with pylint
       run: |
-        pylint --disable=C,R,W filemaker/ || true  # Don't fail on warnings
+        pylint --disable=C,R,W src/ || true  # Don't fail on warnings
         
     - name: Check formatting with black
       run: |
         # Uses pyproject.toml configuration
-        black --check filemaker/
+        black --check src/
         
     - name: Check imports with isort
       run: |
         # Uses pyproject.toml configuration
-        isort --check-only --profile black filemaker/
+        isort --check-only --profile black src/
         
   test:
     runs-on: ubuntu-latest
     needs: quality
     defaults:
       run:
-        working-directory: filemaker
+        working-directory: providers/filemaker
     strategy:
       matrix:
         python-version: ['3.8', '3.9', '3.10']
@@ -87,7 +95,7 @@ jobs:
       id: cache-pip-test
       with:
         path: ~/.cache/pip
-        key: ${{ runner.os }}-pip-${{ matrix.python-version }}-${{ hashFiles('filemaker/requirements.txt') }}
+        key: ${{ runner.os }}-pip-${{ matrix.python-version }}-${{ hashFiles('providers/filemaker/requirements.txt') }}
         restore-keys: |
           ${{ runner.os }}-pip-${{ matrix.python-version }}-
           ${{ runner.os }}-pip-
@@ -101,7 +109,7 @@ jobs:
         
     - name: Run unit tests
       run: |
-        python -m pytest tests/unit --cov=filemaker --cov-report=xml
+        python -m pytest tests/unit --cov=src --cov-report=xml
 
     - name: Run integration tests
       if: ${{ github.event_name == 'workflow_dispatch' || github.event_name == 'release' }}
@@ -113,7 +121,7 @@ jobs:
       run: |
         # Only run if all required secrets are available
         if [[ -n "$FILEMAKER_HOST" && -n "$FILEMAKER_DATABASE" && -n "$FILEMAKER_USERNAME" && -n "$FILEMAKER_PASSWORD" ]]; then
-          python -m pytest tests/integration --cov=filemaker --cov-append --cov-report=xml
+          python -m pytest tests/integration --cov=src --cov-append --cov-report=xml
           echo "Integration tests completed successfully"
         else
           echo "Skipping integration tests - one or more credentials are missing"
@@ -131,7 +139,7 @@ jobs:
     needs: test
     defaults:
       run:
-        working-directory: filemaker
+        working-directory: providers/filemaker
     permissions:
       contents: read
       id-token: write  # IMPORTANT: this permission is required for trusted publishing
@@ -149,7 +157,7 @@ jobs:
       id: cache-pip-deploy
       with:
         path: ~/.cache/pip
-        key: ${{ runner.os }}-pip-deploy-${{ hashFiles('filemaker/requirements.txt', 'filemaker/requirements-dev.txt') }}
+        key: ${{ runner.os }}-pip-deploy-${{ hashFiles('providers/filemaker/requirements.txt', 'providers/filemaker/requirements-dev.txt') }}
         restore-keys: |
           ${{ runner.os }}-pip-deploy-
         
@@ -170,7 +178,7 @@ jobs:
     - name: Publish package to PyPI
       uses: pypa/gh-action-pypi-publish@release/v1
       with:
-        packages-dir: filemaker/dist/
+        packages-dir: providers/filemaker/dist/
         password: ${{ secrets.PYPI_API_TOKEN }}
         skip-existing: true
         verbose: true 
