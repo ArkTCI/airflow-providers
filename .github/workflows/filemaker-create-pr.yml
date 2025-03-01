@@ -1,8 +1,6 @@
 name: FileMaker Provider Create PR
 
 on:
-  repository_dispatch:
-    types: [create-filemaker-pull-request]
   workflow_dispatch:
     inputs:
       new_version:
@@ -11,6 +9,16 @@ on:
       branch_name:
         description: 'Branch name'
         required: true
+  workflow_call:
+    inputs:
+      new_version:
+        description: 'New version'
+        required: true
+        type: string
+      branch_name:
+        description: 'Branch name'
+        required: true
+        type: string
 
 jobs:
   create-pr:
@@ -30,17 +38,17 @@ jobs:
         uses: peter-evans/create-pull-request@v5
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
-          commit-message: "Release v${{ github.event.client_payload.new_version || github.event.inputs.new_version }}"
-          branch: ${{ github.event.client_payload.branch_name || github.event.inputs.branch_name }}
+          commit-message: "Release v${{ inputs.new_version || github.event.inputs.new_version }}"
+          branch: ${{ inputs.branch_name || github.event.inputs.branch_name }}
           base: main
-          title: "Release FileMaker Provider v${{ github.event.client_payload.new_version || github.event.inputs.new_version }}"
+          title: "Release FileMaker Provider v${{ inputs.new_version || github.event.inputs.new_version }}"
           body: |
-            ## Release FileMaker Provider v${{ github.event.client_payload.new_version || github.event.inputs.new_version }}
+            ## Release FileMaker Provider v${{ inputs.new_version || github.event.inputs.new_version }}
             
             This PR was automatically created by the CI/CD pipeline.
             
             ### Changes:
-            - Version bump to v${{ github.event.client_payload.new_version || github.event.inputs.new_version }}
+            - Version bump to v${{ inputs.new_version || github.event.inputs.new_version }}
             - All tests and linting checks have passed
             - Release is ready for PyPI publishing and Docker image generation
             

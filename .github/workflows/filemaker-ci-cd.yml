@@ -1,0 +1,90 @@
+name: FileMaker Provider CI
+
+on:
+  push:
+    paths:
+      - "filemaker/src/**"
+      - "filemaker/tests/**"
+      - "!filemaker/version.txt"
+    branches:
+      - dev
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  packages: write
+  pull-requests: write
+
+jobs:
+  lint:
+    name: Lint Code
+    uses: ./.github/workflows/filemaker-lint.yml
+    # No inputs needed as we're just using the default behavior
+
+  test:
+    name: Run Tests
+    needs: [lint]
+    if: success()
+    uses: ./.github/workflows/filemaker-test.yml
+    with:
+      ref: ${{ github.ref }}
+
+  # For dev branch pushes, trigger version bump workflow
+  version-bump:
+    name: Bump Version
+    needs: [test]
+    if: success() && github.ref == 'refs/heads/dev' && github.event_name == 'push'
+    uses: ./.github/workflows/filemaker-bump-version.yml
+    with:
+      bump_type: patch
+      ref: ${{ github.ref }}
+
+  # Create a PR for the version bump
+  create-pr:
+    name: Create Pull Request
+    needs: [version-bump]
+    if: success() && needs.version-bump.outputs.new_version != ''
+    uses: ./.github/workflows/filemaker-create-pr.yml
+    with:
+      new_version: ${{ needs.version-bump.outputs.new_version }}
+      branch_name: ${{ needs.version-bump.outputs.branch_name }}
+
+  summary:
+    needs: [lint, test, version-bump, create-pr]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Display Workflow Status
+        run: |
+          echo "Lint Status: ${{ needs.lint.result }}"
+          echo "Test Status: ${{ needs.test.result }}"
+          echo "Version Bump Status: ${{ needs.version-bump.result || 'Not Run' }}"
+          echo "PR Creation Status: ${{ needs.create-pr.result || 'Not Run' }}"
+          
+          if [[ "${{ needs.lint.result }}" == "success" ]]; then
+            echo "✅ Linting passed successfully"
+          else
+            echo "❌ Linting failed"
+          fi
+          
+          if [[ "${{ needs.test.result }}" == "success" ]]; then
+            echo "✅ Tests passed successfully"
+          else
+            echo "❌ Tests failed"
+          fi
+          
+          if [[ "${{ needs.version-bump.result || 'skipped' }}" == "success" ]]; then
+            echo "✅ Version bump completed successfully"
+          elif [[ "${{ needs.version-bump.result || 'skipped' }}" == "skipped" ]]; then
+            echo "⏭️ Version bump was skipped"
+          else
+            echo "❌ Version bump failed"
+          fi
+          
+          if [[ "${{ needs.create-pr.result || 'skipped' }}" == "success" ]]; then
+            echo "✅ Pull request created successfully"
+          elif [[ "${{ needs.create-pr.result || 'skipped' }}" == "skipped" ]]; then
+            echo "⏭️ Pull request creation was skipped"
+          else
+            echo "❌ Pull request creation failed"
+          fi 

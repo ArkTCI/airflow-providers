@@ -1,8 +1,6 @@
-name: FileMaker Provider Version Bump
+name: FileMaker Provider Version Bump (Standalone)
 
 on:
-  repository_dispatch:
-    types: [bump-filemaker-version]
   workflow_dispatch:
     inputs:
       bump_type:
@@ -18,13 +16,31 @@ on:
         description: 'Branch or commit SHA'
         required: false
         default: ''
+  workflow_call:
+    inputs:
+      bump_type:
+        description: 'Version bump type'
+        required: true
+        type: string
+        default: 'patch'
+      ref:
+        description: 'Branch or commit SHA'
+        required: false
+        type: string
+    outputs:
+      new_version:
+        description: "The new version after bumping"
+        value: ${{ jobs.bump-version.outputs.new_version }}
+      branch_name:
+        description: "The branch name created for the release"
+        value: ${{ jobs.bump-version.outputs.branch_name }}
 
 jobs:
   bump-version:
     name: Bump Version
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/${{ github.repository }}/filemaker-dependencies:latest
+      image: ghcr.io/arktci/airflow-providers/filemaker-dependencies:latest
       credentials:
         username: ${{ github.actor }}
         password: ${{ secrets.GITHUB_TOKEN }}
@@ -36,7 +52,7 @@ jobs:
         uses: actions/checkout@v3
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
-          ref: ${{ github.event.client_payload.ref || github.event.inputs.ref || github.ref }}
+          ref: ${{ inputs.ref || github.ref }}
 
       - name: Set Git user
         run: |
@@ -56,7 +72,7 @@ jobs:
         run: |
           cd filemaker
           # No need to install bump2version as it's already in the container
-          bump2version ${{ github.event.inputs.bump_type || 'patch' }}
+          bump2version ${{ inputs.bump_type || github.event.inputs.bump_type || 'patch' }}
           
           # Read the new version
           NEW_VERSION=$(grep -o '"[0-9]\+\.[0-9]\+\.[0-9]\+"' version.py | tr -d '"')
@@ -78,9 +94,25 @@ jobs:
           git push origin ${BRANCH_NAME}
           echo "branch_name=${BRANCH_NAME}" >> $GITHUB_OUTPUT
 
-      - name: Trigger PR creation
-        uses: peter-evans/repository-dispatch@v2
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          event-type: create-filemaker-pull-request
-          client-payload: '{"new_version": "${{ steps.bump.outputs.new_version }}", "branch_name": "${{ steps.create_branch.outputs.branch_name }}"}'
+  summary:
+    name: Summary
+    needs: [bump-version]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Display Results
+        run: |
+          echo "Version Bump Status: ${{ needs.bump-version.result }}"
+          
+          if [[ "${{ needs.bump-version.result }}" == "success" ]]; then
+            echo "✅ Version bumped to ${{ needs.bump-version.outputs.new_version }}"
+            echo "✅ Created branch ${{ needs.bump-version.outputs.branch_name }}"
+            
+            if [[ "${{ github.event_name }}" == "workflow_call" ]]; then
+              echo "ℹ️ PR creation will be handled by the calling workflow"
+            else
+              echo "ℹ️ Run the create-pr workflow manually if needed"
+            fi
+          else
+            echo "❌ Version bump failed"
+          fi

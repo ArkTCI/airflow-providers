@@ -1,8 +1,12 @@
-name: FileMaker Provider Linting
+name: FileMaker Provider PR Linting
+# This workflow only runs linting checks on PRs and manual triggers
+# It does not trigger any other workflows and is separate from the main CI pipeline
+
+# Note: For this workflow to access GitHub Container Registry, ensure:
+# 1. GitHub Actions has "Read and write permissions" under repository Settings > Actions > General
+# 2. GitHub Packages is enabled for the repository
 
 on:
-  repository_dispatch:
-    types: [run-filemaker-lint]
   pull_request:
     paths:
       - "filemaker/src/**"
@@ -10,6 +14,12 @@ on:
       - "!filemaker/requirements.txt"
       - "!filemaker/requirements-dev.txt"
   workflow_dispatch:
+  workflow_call:
+    # This allows the workflow to be called from other workflows
+    outputs:
+      lint_success:
+        description: "Whether linting was successful"
+        value: ${{ jobs.lint.outputs.success }}
 
 jobs:
   check-if-bot-commit:
@@ -23,10 +33,13 @@ jobs:
           # Default is not a bot
           IS_BOT="false"
           
-          # Only check head_commit for push events
-          if [[ "${{ github.event_name }}" == "push" ]]; then
-            if [[ "${{ github.event.head_commit.author.name }}" == "GitHub Actions" ]]; then
-              IS_BOT="true"
+          # Don't check for bot commits when called from another workflow
+          if [[ "${{ github.event_name }}" != "workflow_call" ]]; then
+            # Only check head_commit for push events
+            if [[ "${{ github.event_name }}" == "push" ]]; then
+              if [[ "${{ github.event.head_commit.author.name }}" == "GitHub Actions" ]]; then
+                IS_BOT="true"
+              fi
             fi
           fi
           
@@ -37,8 +50,10 @@ jobs:
     if: needs.check-if-bot-commit.outputs.is_bot != 'true'
     name: Lint Code
     runs-on: ubuntu-latest
+    outputs:
+      success: ${{ steps.set_success.outputs.success }}
     container:
-      image: ghcr.io/${{ github.repository }}/filemaker-dependencies:latest
+      image: ghcr.io/arktci/airflow-providers/filemaker-dependencies:latest
       credentials:
         username: ${{ github.actor }}
         password: ${{ secrets.GITHUB_TOKEN }}
@@ -46,7 +61,7 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v3
         with:
-          ref: ${{ github.event.client_payload.ref || github.ref }}
+          ref: ${{ github.ref }}
 
       # No need to install dependencies as they're in the container
 
@@ -70,10 +85,10 @@ jobs:
           cd filemaker
           mypy src
 
-      - name: Trigger test workflow if successful
-        if: success() && (github.event_name == 'push' || github.event_name == 'repository_dispatch')
-        uses: peter-evans/repository-dispatch@v2
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          event-type: run-filemaker-tests
-          client-payload: '{"ref": "${{ github.event.client_payload.ref || github.ref }}", "sha": "${{ github.event.client_payload.sha || github.sha }}"}'
+      - name: Set success output
+        id: set_success
+        run: echo "success=true" >> $GITHUB_OUTPUT
+
+      - name: Summarize Linting Status
+        run: |
+          echo "✅ All linting checks passed successfully"

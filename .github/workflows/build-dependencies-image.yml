@@ -4,13 +4,13 @@ on:
   push:
     branches: [ main ]
     paths:
-      - 'airflow-dev/providers/filemaker/requirements.txt'
-      - 'airflow-dev/providers/filemaker/requirements-dev.txt'
+      - 'filemaker/requirements.txt'
+      - 'filemaker/requirements-dev.txt'
   pull_request:
     branches: [ main ]
     paths:
-      - 'airflow-dev/providers/filemaker/requirements.txt'
-      - 'airflow-dev/providers/filemaker/requirements-dev.txt'
+      - 'filemaker/requirements.txt'
+      - 'filemaker/requirements-dev.txt'
   workflow_dispatch:  # Allow manual triggering
 
 jobs:

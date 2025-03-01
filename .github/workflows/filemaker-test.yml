@@ -1,21 +1,31 @@
 name: FileMaker Provider Tests
 
 on:
-  repository_dispatch:
-    types: [run-filemaker-tests]
   workflow_dispatch:
     inputs:
       ref:
         description: 'Branch or commit SHA'
         required: false
         default: ''
+  workflow_call:
+    inputs:
+      ref:
+        description: 'Branch or commit SHA'
+        required: false
+        type: string
+    outputs:
+      success:
+        description: "Whether the tests were successful"
+        value: ${{ jobs.test.outputs.success }}
 
 jobs:
   test:
     name: Run Tests
     runs-on: ubuntu-latest
+    outputs:
+      success: ${{ steps.set_output.outputs.success }}
     container:
-      image: ghcr.io/${{ github.repository }}/filemaker-dependencies:latest
+      image: ghcr.io/arktci/airflow-providers/filemaker-dependencies:latest
       credentials:
         username: ${{ github.actor }}
         password: ${{ secrets.GITHUB_TOKEN }}
@@ -23,7 +33,7 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v3
         with:
-          ref: ${{ github.event.client_payload.ref || github.event.inputs.ref || github.ref }}
+          ref: ${{ inputs.ref || github.ref }}
 
       - name: Run tests
         run: |
@@ -36,11 +46,7 @@ jobs:
           token: ${{ secrets.CODECOV_TOKEN }}
           files: ./filemaker/coverage.xml
           fail_ci_if_error: false
-
-      - name: Trigger version bump if successful
-        if: success() && github.event.client_payload.ref
-        uses: peter-evans/repository-dispatch@v2
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          event-type: bump-filemaker-version
-          client-payload: '{"ref": "${{ github.event.client_payload.ref }}", "sha": "${{ github.event.client_payload.sha }}"}'
+          
+      - name: Set output
+        id: set_output
+        run: echo "success=true" >> $GITHUB_OUTPUT
