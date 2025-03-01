@@ -6,7 +6,8 @@ on:
     branches:
       - main
     paths:
-      - "filemaker/**"
+      - "filemaker/src/**"
+      - "filemaker/tests/**"
   workflow_dispatch:
     inputs:
       version:
@@ -32,22 +33,22 @@ jobs:
     runs-on: ubuntu-latest
     needs: check-pr
     if: needs.check-pr.outputs.version || github.event.inputs.version
+    container:
+      image: ghcr.io/${{ github.repository }}/filemaker-dependencies:latest
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
         with:
           ref: main
 
-      - name: Set up Python
-        uses: actions/setup-python@v4
-        with:
-          python-version: '3.10'
+      # No need to install dependencies as they're in the container
 
       - name: Build distribution
         run: |
           cd filemaker
-          python -m pip install --upgrade pip
-          pip install build
           python -m build
 
       - name: Publish package to PyPI

@@ -1,0 +1,63 @@
+name: FileMaker Check Dependencies Image
+
+on:
+  push:
+    paths:
+      - "filemaker/src/**"
+      - "!filemaker/version.txt"
+  pull_request:
+    paths:
+      - "filemaker/src/**"
+  workflow_dispatch:
+
+jobs:
+  check-image:
+    name: Check Dependencies Image
+    runs-on: ubuntu-latest
+    outputs:
+      image_exists: ${{ steps.check_image.outputs.image_exists }}
+    steps:
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+          
+      - name: Check if image exists
+        id: check_image
+        run: |
+          IMAGE_EXISTS=false
+          if docker pull ghcr.io/${{ github.repository }}/filemaker-dependencies:latest &>/dev/null; then
+            IMAGE_EXISTS=true
+          fi
+          echo "image_exists=${IMAGE_EXISTS}" >> $GITHUB_OUTPUT
+          echo "Dependencies image exists: ${IMAGE_EXISTS}"
+          
+  build-image:
+    name: Build Dependencies Image
+    needs: check-image
+    if: needs.check-image.outputs.image_exists == 'false'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Run build workflow
+        run: |
+          gh workflow run build-dependencies-image.yml
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  trigger-lint:
+    name: Trigger Lint Workflow
+    needs: [check-image, build-image]
+    if: always() && (needs.check-image.result == 'success')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger Lint Workflow
+        uses: peter-evans/repository-dispatch@v2
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          event-type: run-filemaker-lint
+          client-payload: '{"ref": "${{ github.ref }}", "sha": "${{ github.sha }}"}' 

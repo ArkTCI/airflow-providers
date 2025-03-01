@@ -14,24 +14,16 @@ jobs:
   test:
     name: Run Tests
     runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/${{ github.repository }}/filemaker-dependencies:latest
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
         with:
           ref: ${{ github.event.client_payload.ref || github.event.inputs.ref || github.ref }}
-
-      - name: Set up Python
-        uses: actions/setup-python@v4
-        with:
-          python-version: '3.10'
-          cache: 'pip'
-
-      - name: Install dependencies
-        run: |
-          cd filemaker
-          python -m pip install --upgrade pip
-          pip install pytest pytest-cov mock
-          pip install -e .
 
       - name: Run tests
         run: |
@@ -46,7 +38,7 @@ jobs:
           fail_ci_if_error: false
 
       - name: Trigger version bump if successful
-        if: success() && github.event.client_payload.ref && github.event.client_payload.ref == 'refs/heads/dev'
+        if: success() && github.event.client_payload.ref
         uses: peter-evans/repository-dispatch@v2
         with:
           token: ${{ secrets.GITHUB_TOKEN }}

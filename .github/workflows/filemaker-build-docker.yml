@@ -13,6 +13,7 @@ jobs:
   build-docker:
     name: Build and Push Docker Image
     runs-on: ubuntu-latest
+    # Container not needed for this job as it's building a Docker image
     steps:
       - name: Checkout code
         uses: actions/checkout@v3

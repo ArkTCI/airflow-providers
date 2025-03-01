@@ -23,6 +23,11 @@ jobs:
   bump-version:
     name: Bump Version
     runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/${{ github.repository }}/filemaker-dependencies:latest
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
     outputs:
       new_version: ${{ steps.bump.outputs.new_version }}
       branch_name: ${{ steps.create_branch.outputs.branch_name }}
@@ -32,11 +37,6 @@ jobs:
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           ref: ${{ github.event.client_payload.ref || github.event.inputs.ref || github.ref }}
-
-      - name: Set up Python
-        uses: actions/setup-python@v4
-        with:
-          python-version: '3.10'
 
       - name: Set Git user
         run: |
@@ -55,7 +55,7 @@ jobs:
         id: bump
         run: |
           cd filemaker
-          pip install bump2version
+          # No need to install bump2version as it's already in the container
           bump2version ${{ github.event.inputs.bump_type || 'patch' }}
           
           # Read the new version

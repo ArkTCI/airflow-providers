@@ -16,6 +16,7 @@ jobs:
   create-pr:
     name: Create Pull Request
     runs-on: ubuntu-latest
+    # No container needed for this job as it doesn't require any dependencies
     outputs:
       pr_number: ${{ steps.create_pr.outputs.pull-request-number }}
     steps:
