@@ -196,29 +196,28 @@ jobs:
             # Include commit SHA for traceability
             type=sha,format=short
 
-      # Create Dockerfile
-      - name: Create Dockerfile
+      # Update the existing Dockerfile with the correct Airflow version
+      - name: Update Dockerfile
         run: |
-          cat > Dockerfile << 'EOF'
-          FROM apache/airflow:${{ steps.airflow_version.outputs.version }}
+          cd filemaker
+          # Update the FROM line with the determined Airflow version
+          sed -i "s|FROM apache/airflow:[0-9.]*|FROM apache/airflow:${{ steps.airflow_version.outputs.version }}|" Dockerfile
           
-          LABEL maintainer="Joshua Lipton <liptonj@example.com>"
-          LABEL description="Apache Airflow with FileMaker Provider pre-installed"
-          EOF
-          
-          # Add specific version if provided
+          # Update provider version if specified
           if [[ "${{ steps.provider_version.outputs.provider_version }}" != "latest" ]]; then
-            echo "RUN pip install --no-cache-dir \"apache-airflow==${{ steps.airflow_version.outputs.version }}\" apache-airflow-providers-filemaker==${{ steps.provider_version.outputs.provider_version }}" >> Dockerfile
-          else
-            echo "RUN pip install --no-cache-dir \"apache-airflow==${{ steps.airflow_version.outputs.version }}\" apache-airflow-providers-filemaker" >> Dockerfile
+            sed -i "s|RUN pip install --no-cache-dir.*|RUN pip install --no-cache-dir \"apache-airflow==${{ steps.airflow_version.outputs.version }}\" apache-airflow-providers-filemaker==${{ steps.provider_version.outputs.provider_version }}|" Dockerfile
           fi
+          
+          echo "Using existing Dockerfile:"
+          cat Dockerfile
 
       # Build and push Docker image
       - name: Build and push Docker image
         uses: docker/build-push-action@v4
         with:
-          context: .
-          push: ${{ github.event.inputs.push_to_registry != 'false' }}
+          context: filemaker
+          file: filemaker/Dockerfile
+          push: ${{ env.PUSH_IMAGE != 'false' && github.event.inputs.push_to_registry != 'false' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
