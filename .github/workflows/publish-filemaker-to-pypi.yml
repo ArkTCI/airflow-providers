@@ -99,9 +99,26 @@ jobs:
         pip install -r requirements-dev.txt
         pip install -e .
         
-    - name: Test with pytest
+    - name: Run unit tests
       run: |
-        pytest --cov=filemaker test_*.py --cov-report=xml
+        python -m pytest tests/unit --cov=filemaker --cov-report=xml
+
+    - name: Run integration tests
+      if: ${{ github.event_name == 'workflow_dispatch' || github.event_name == 'release' }}
+      env:
+        FILEMAKER_HOST: ${{ secrets.FILEMAKER_HOST }}
+        FILEMAKER_DATABASE: ${{ secrets.FILEMAKER_DATABASE }}
+        FILEMAKER_USERNAME: ${{ secrets.FILEMAKER_USERNAME }}
+        FILEMAKER_PASSWORD: ${{ secrets.FILEMAKER_PASSWORD }}
+      run: |
+        # Only run if all required secrets are available
+        if [[ -n "$FILEMAKER_HOST" && -n "$FILEMAKER_DATABASE" && -n "$FILEMAKER_USERNAME" && -n "$FILEMAKER_PASSWORD" ]]; then
+          python -m pytest tests/integration --cov=filemaker --cov-append --cov-report=xml
+          echo "Integration tests completed successfully"
+        else
+          echo "Skipping integration tests - one or more credentials are missing"
+          echo "Integration tests will only run if all credentials are provided as GitHub secrets"
+        fi
         
     - name: Upload coverage to Codecov
       uses: codecov/codecov-action@v3

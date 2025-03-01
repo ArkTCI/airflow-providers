@@ -9,7 +9,7 @@ from typing import Any, Dict, Optional
 from airflow.models import BaseOperator
 from airflow.utils.decorators import apply_defaults
 
-from ..hooks.filemaker import FileMakerHook
+from airflow.providers.filemaker.hooks.filemaker import FileMakerHook
 
 
 class FileMakerQueryOperator(BaseOperator):

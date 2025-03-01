@@ -13,7 +13,8 @@ setuptools.setup(
     long_description=long_description,
     long_description_content_type="text/markdown",
     url="https://github.com/ArkTCI/airflow-providers",
-    packages=setuptools.find_packages(),
+    package_dir={"": "src"},
+    packages=setuptools.find_namespace_packages(include=["airflow.providers.*"], where="src"),
     classifiers=[
         "Programming Language :: Python :: 3",
         "License :: OSI Approved :: Apache Software License",
@@ -28,7 +29,7 @@ setuptools.setup(
     ],
     entry_points={
         "apache_airflow_provider": [
-            "provider_info=filemaker:get_provider_info"
+            "provider_info=airflow.providers.filemaker:get_provider_info"
         ]
     }
 ) 

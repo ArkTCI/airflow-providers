@@ -9,7 +9,7 @@ from typing import Any, Callable, Dict, Optional
 # Simplify to use the most common location in modern Airflow
 from airflow.sensors.base import BaseSensorOperator
 
-from ..hooks.filemaker import FileMakerHook
+from airflow.providers.filemaker.hooks.filemaker import FileMakerHook
 
 
 class FileMakerDataSensor(BaseSensorOperator):

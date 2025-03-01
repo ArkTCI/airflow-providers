@@ -12,7 +12,7 @@ from airflow.exceptions import AirflowException
 from airflow.hooks.base import BaseHook
 
 # Import the auth module
-from ..auth.cognitoauth import FileMakerCloudAuth
+from airflow.providers.filemaker.auth.cognitoauth import FileMakerCloudAuth
 
 
 class FileMakerHook:
@@ -135,7 +135,7 @@ class FileMakerHook:
         token = self.get_token()
 
         # Prepare headers
-        headers = {"Authorization": f"Bearer {token}", "Accept": accept_format}
+        headers = {"Authorization": f"FMID {token}", "Accept": accept_format}
 
         # Execute request
         response = requests.get(endpoint, headers=headers, params=params)
@@ -198,34 +198,27 @@ class FileMakerHook:
 
     def get_pool_info(self) -> Dict[str, str]:
         """
-        Retrieve Cognito pool information from Claris endpoint
+        Return fixed Cognito pool information for FileMaker Cloud.
 
-        :return: Dict containing Region, UserPool_ID, Client_ID, API_Host, and FCC_Host
+        Uses the same credentials as the JavaScript implementation.
+
+        :return: Dict containing Region, UserPool_ID, Client_ID
         :rtype: Dict[str, str]
         """
-        endpoint_url = "https://www.ifmcloud.com/endpoint/userpool/2.2.0.my.claris.com.json"
-        self.log.info(f"Retrieving Cognito pool information from: {endpoint_url}")
+        # Use fixed Cognito credentials specific to FileMaker Cloud
+        pool_info = {
+            "Region": "us-west-2",
+            "UserPool_ID": "us-west-2_NqkuZcXQY",
+            "Client_ID": "4l9rvl4mv5es1eep1qe97cautn"
+        }
+        
+        self.log.info(
+            f"Using fixed FileMaker Cloud Cognito credentials: Region={pool_info.get('Region')}, "
+            f"UserPool_ID={pool_info.get('UserPool_ID')}, "
+            f"Client_ID={pool_info.get('Client_ID')[:5]}..."
+        )
 
-        try:
-            response = requests.get(endpoint_url)
-            response.raise_for_status()
-
-            data = response.json()
-            if data.get("errcode") != "Ok":
-                raise AirflowException(f"Error retrieving pool info: {data.get('errmessage')}")
-
-            pool_info = data.get("data", {})
-            self.log.info(
-                f"Retrieved pool info: Region={pool_info.get('Region')}, "
-                f"UserPool_ID={pool_info.get('UserPool_ID')}, "
-                f"Client_ID={pool_info.get('Client_ID')[:5]}..."
-            )
-
-            return pool_info
-
-        except Exception as e:
-            self.log.error(f"Error retrieving pool info: {str(e)}")
-            raise AirflowException(f"Failed to retrieve Cognito pool information: {str(e)}")
+        return pool_info
 
     def get_fmid_token(self, username: Optional[str] = None, password: Optional[str] = None) -> str:
         """
@@ -594,7 +587,7 @@ class FileMakerHook:
 
         # Set up headers with appropriate content type for binary data
         headers = {
-            "Authorization": f"Bearer {token}",
+            "Authorization": f"FMID {token}",
             "Accept": accept_format or "application/octet-stream",
         }
 
