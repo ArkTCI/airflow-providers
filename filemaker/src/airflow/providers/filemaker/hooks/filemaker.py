@@ -209,9 +209,9 @@ class FileMakerHook:
         pool_info = {
             "Region": "us-west-2",
             "UserPool_ID": "us-west-2_NqkuZcXQY",
-            "Client_ID": "4l9rvl4mv5es1eep1qe97cautn"
+            "Client_ID": "4l9rvl4mv5es1eep1qe97cautn",
         }
-        
+
         self.log.info(
             f"Using fixed FileMaker Cloud Cognito credentials: Region={pool_info.get('Region')}, "
             f"UserPool_ID={pool_info.get('UserPool_ID')}, "

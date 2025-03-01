@@ -1,13 +1,14 @@
 """
 AuthCloudAuth module for FileMaker Cloud authentication.
 """
+
 import logging
-from typing import Dict, Optional, Tuple, Any
+from typing import Any, Dict, Optional, Tuple
 
 import boto3
+import botocore
 import requests
 from botocore.config import Config
-import botocore
 from pycognito import Cognito
 
 
@@ -47,30 +48,27 @@ class FileMakerCloudAuth:
         self.region = region
         self._token = None
         self.client = None
-        
-        # Use fixed Cognito pool credentials or provided ones 
+
+        # Use fixed Cognito pool credentials or provided ones
         self.user_pool_id = user_pool_id or "us-west-2_NqkuZcXQY"
         self.client_id = client_id or "4l9rvl4mv5es1eep1qe97cautn"
-        
+
         # Set region from user_pool_id if not provided
         if not self.region and "_" in self.user_pool_id:
             self.region = self.user_pool_id.split("_")[0]
-            
+
         self.log = logging.getLogger(__name__)
-        
+
         # Initialize the Cognito client using pycognito
         # Configure boto3 client with unsigned requests to avoid looking for AWS credentials
-        boto_config = Config(
-            signature_version=botocore.UNSIGNED,
-            retries={"max_attempts": 3}
-        )
-        
+        boto_config = Config(signature_version=botocore.UNSIGNED, retries={"max_attempts": 3})
+
         self.cognito = Cognito(
             user_pool_id=self.user_pool_id,
             client_id=self.client_id,
             username=self.username,
             user_pool_region=self.region,
-            boto3_client_kwargs={"config": boto_config}
+            boto3_client_kwargs={"config": boto_config},
         )
 
     def get_token(self) -> str:
@@ -90,13 +88,13 @@ class FileMakerCloudAuth:
         try:
             # Authenticate using SRP (Secure Remote Password) protocol
             self.log.info("Initiating SRP authentication with Cognito")
-            
+
             # pycognito handles all the SRP calculations internally
             self.cognito.authenticate(password=self.password)
-            
+
             # Get the ID token
             self._token = self.cognito.id_token
-            
+
             self.log.info("Successfully obtained authentication token")
             return self._token
 
