@@ -62,15 +62,21 @@ jobs:
       run: |
         pylint --disable=C,R,W src/ || true  # Don't fail on warnings
         
-    - name: Check formatting with black
+    - name: Auto-format with black
       run: |
         # Uses pyproject.toml configuration
-        black --check src/
+        black src/
         
-    - name: Check imports with isort
+    - name: Auto-format imports with isort
       run: |
         # Uses pyproject.toml configuration
-        isort --check-only --profile black src/
+        isort src/
+        
+    - name: Commit formatting changes
+      uses: stefanzweifel/git-auto-commit-action@v4
+      with:
+        commit_message: "Apply code formatting [skip ci]"
+        file_pattern: filemaker/src/**/*.py
         
   test:
     runs-on: ubuntu-latest
