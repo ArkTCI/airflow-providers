@@ -205,8 +205,12 @@ jobs:
           
           # Update provider version if specified
           if [[ "${{ steps.provider_version.outputs.provider_version }}" != "latest" ]]; then
-            sed -i "s|RUN pip install --no-cache-dir.*|RUN pip install --no-cache-dir \"apache-airflow==${{ steps.airflow_version.outputs.version }}\" apache-airflow-providers-filemaker==${{ steps.provider_version.outputs.provider_version }}|" Dockerfile
+            # Fix the sed command to preserve the correct package name but add the version
+            sed -i "s|arktci-airflow-provider-filemaker|arktci-airflow-provider-filemaker==${{ steps.provider_version.outputs.provider_version }}|" Dockerfile
           fi
+          
+          # Replace the ${AIRFLOW_VERSION} variable with the actual version
+          sed -i "s|\${AIRFLOW_VERSION}|${{ steps.airflow_version.outputs.version }}|" Dockerfile
           
           echo "Using existing Dockerfile:"
           cat Dockerfile
