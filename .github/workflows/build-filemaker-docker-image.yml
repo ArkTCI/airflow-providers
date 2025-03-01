@@ -1,0 +1,252 @@
+name: Build and Publish FileMaker Airflow Docker Image
+
+on:
+  workflow_dispatch:  # Allow manual triggering
+    inputs:
+      image_tag:
+        description: 'Docker image tag (default: latest)'
+        required: false
+        default: 'latest'
+      push_to_registry:
+        description: 'Push to Docker registry'
+        required: false
+        default: 'true'
+        type: choice
+        options:
+          - 'true'
+          - 'false'
+      provider_version:
+        description: 'FileMaker provider version to install'
+        required: false
+        default: 'latest'
+      airflow_version:
+        description: 'Airflow version to use (default: from env)'
+        required: false
+        default: ''
+  # Listen for repository dispatch events from the PyPI publish workflow
+  repository_dispatch:
+    types: [build-docker-image]
+  # Use workflow_run to trigger when PyPI publish workflow completes successfully
+  workflow_run:
+    workflows: ["Publish FileMaker Provider to PyPI"]
+    types:
+      - completed
+    branches:
+      - main
+  # Check for new Airflow versions daily
+  schedule:
+    - cron: '0 0 * * *'  # Run at midnight UTC every day
+  # Also trigger on release of FileMaker provider
+  release:
+    types: [published]
+
+env:
+  REGISTRY: docker.io
+  IMAGE_NAME: arktci/airflow
+  AIRFLOW_VERSION: 2.10.5
+
+jobs:
+  check-if-bot-commit:
+    runs-on: ubuntu-latest
+    outputs:
+      is_bot: ${{ steps.check_bot_commit.outputs.is_bot }}
+    steps:
+      - name: Check if commit is from GitHub Actions
+        id: check_bot_commit
+        run: |
+          if [[ "${{ github.event.head_commit.author.name }}" == "GitHub Actions" ]]; then
+            echo "is_bot=true" >> $GITHUB_OUTPUT
+          else
+            echo "is_bot=false" >> $GITHUB_OUTPUT
+          fi
+
+  build-and-publish:
+    needs: check-if-bot-commit
+    if: needs.check-if-bot-commit.outputs.is_bot != 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write  # Needed to push to GHCR
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      # Determine Airflow version to use
+      - name: Determine Airflow version
+        id: airflow_version
+        run: |
+          # Use input version if provided
+          if [[ -n "${{ github.event.inputs.airflow_version }}" ]]; then
+            AIRFLOW_VERSION="${{ github.event.inputs.airflow_version }}"
+            echo "Using provided Airflow version: ${AIRFLOW_VERSION}"
+          # Check for latest version when triggered by schedule
+          elif [[ "${{ github.event_name }}" == "schedule" ]]; then
+            # Get latest Apache Airflow version from Docker Hub
+            LATEST_VERSION=$(curl -s https://hub.docker.com/v2/repositories/apache/airflow/tags?page_size=100 | jq -r '.results[] | select(.name | test("^[0-9]+\\.[0-9]+\\.[0-9]+$")) | .name' | sort -V | tail -n 1)
+            
+            if [[ -n "$LATEST_VERSION" && "$LATEST_VERSION" != "${{ env.AIRFLOW_VERSION }}" ]]; then
+              AIRFLOW_VERSION="$LATEST_VERSION"
+              echo "Found new Airflow version: ${AIRFLOW_VERSION}"
+            else
+              AIRFLOW_VERSION="${{ env.AIRFLOW_VERSION }}"
+              echo "No new Airflow version found, using current: ${AIRFLOW_VERSION}"
+              # Skip the build if running on schedule and no new version
+              if [[ "${{ github.event_name }}" == "schedule" && "$LATEST_VERSION" == "${{ env.AIRFLOW_VERSION }}" ]]; then
+                echo "No new Airflow version available, skipping build."
+                echo "should_skip=true" >> $GITHUB_OUTPUT
+              fi
+            fi
+          # Use default from env
+          else
+            AIRFLOW_VERSION="${{ env.AIRFLOW_VERSION }}"
+            echo "Using default Airflow version: ${AIRFLOW_VERSION}"
+          fi
+          
+          echo "version=${AIRFLOW_VERSION}" >> $GITHUB_OUTPUT
+
+      # Check for new provider version on PyPI
+      - name: Check for new provider version on PyPI
+        id: check_provider_pypi
+        if: github.event_name == 'schedule' && steps.airflow_version.outputs.should_skip == 'true'
+        run: |
+          # Get latest version from PyPI
+          LATEST_PROVIDER_VERSION=$(pip index versions apache-airflow-providers-filemaker 2>/dev/null | grep -m1 "Available versions:" | sed 's/Available versions: //' | tr ',' '\n' | sort -V | tail -n1 | xargs)
+          
+          # Get current version from our env or local file
+          CURRENT_VERSION=$(cd filemaker && python -c "from setup import get_version; print(get_version())" 2>/dev/null || echo "unknown")
+          
+          echo "Latest PyPI version: ${LATEST_PROVIDER_VERSION}"
+          echo "Current version: ${CURRENT_VERSION}"
+          
+          # If there's a new version, don't skip the build
+          if [[ -n "$LATEST_PROVIDER_VERSION" && "$LATEST_PROVIDER_VERSION" != "$CURRENT_VERSION" ]]; then
+            echo "Found new provider version on PyPI: ${LATEST_PROVIDER_VERSION}"
+            echo "should_skip=false" >> $GITHUB_OUTPUT
+            echo "provider_version=${LATEST_PROVIDER_VERSION}" >> $GITHUB_OUTPUT
+          else
+            echo "No new provider version found on PyPI."
+          fi
+
+      # Get provider version
+      - name: Determine provider version
+        id: provider_version
+        if: steps.airflow_version.outputs.should_skip != 'true' || steps.check_provider_pypi.outputs.should_skip == 'false' || github.event_name == 'repository_dispatch' || github.event_name == 'workflow_run'
+        run: |
+          # If this is triggered by the PyPI publish workflow
+          if [[ "${{ github.event_name }}" == "workflow_run" && "${{ github.event.workflow_run.name }}" == "Publish FileMaker Provider to PyPI" && "${{ github.event.workflow_run.conclusion }}" == "success" ]]; then
+            # We need to get the latest version since we don't have direct access to the version from the other workflow
+            # Get latest version from PyPI (just published)
+            PROVIDER_VERSION=$(pip index versions apache-airflow-providers-filemaker 2>/dev/null | grep -m1 "Available versions:" | sed 's/Available versions: //' | tr ',' '\n' | sort -V | tail -n1 | xargs)
+            echo "Using version from PyPI (published by workflow): ${PROVIDER_VERSION}"
+          # If this is a repository dispatch from PyPI publish workflow, use the provided version
+          elif [[ "${{ github.event_name }}" == "repository_dispatch" && "${{ github.event.client_payload.triggered_by }}" == "pypi_publish" ]]; then
+            PROVIDER_VERSION="${{ github.event.client_payload.provider_version }}"
+            echo "Using version from PyPI publish workflow: ${PROVIDER_VERSION}"
+          # If we detected a new version on PyPI, use that
+          elif [[ -n "${{ steps.check_provider_pypi.outputs.provider_version }}" ]]; then
+            PROVIDER_VERSION="${{ steps.check_provider_pypi.outputs.provider_version }}"
+            echo "Using detected PyPI version: ${PROVIDER_VERSION}"
+          # Otherwise use the input or release tag
+          elif [[ "${{ github.event.inputs.provider_version }}" != "latest" && "${{ github.event.inputs.provider_version }}" != "" ]]; then
+            PROVIDER_VERSION="${{ github.event.inputs.provider_version }}"
+          elif [[ "${{ github.event_name }}" == "release" ]]; then
+            PROVIDER_VERSION="${{ github.event.release.tag_name }}"
+            # Remove v prefix if present
+            PROVIDER_VERSION=${PROVIDER_VERSION#v}
+          else
+            PROVIDER_VERSION="latest" # Use latest version
+          fi
+          echo "provider_version=${PROVIDER_VERSION}" >> $GITHUB_OUTPUT
+          echo "Using FileMaker provider version: ${PROVIDER_VERSION}"
+
+      # Setup Docker Buildx
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+
+      # Login to Docker Hub
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v2
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+
+      # Extract metadata for Docker
+      - name: Extract metadata for Docker
+        id: meta
+        uses: docker/metadata-action@v4
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            # Always include latest tag
+            type=raw,value=latest
+            # Include Airflow version tag
+            type=raw,value=${{ steps.airflow_version.outputs.version }}
+            # Include commit SHA for traceability
+            type=sha,format=short
+
+      # Create Dockerfile
+      - name: Create Dockerfile
+        run: |
+          cat > Dockerfile << 'EOF'
+          FROM apache/airflow:${{ steps.airflow_version.outputs.version }}
+          
+          LABEL maintainer="Joshua Lipton <liptonj@example.com>"
+          LABEL description="Apache Airflow with FileMaker Provider pre-installed"
+          EOF
+          
+          # Add specific version if provided
+          if [[ "${{ steps.provider_version.outputs.provider_version }}" != "latest" ]]; then
+            echo "RUN pip install --no-cache-dir \"apache-airflow==${{ steps.airflow_version.outputs.version }}\" apache-airflow-providers-filemaker==${{ steps.provider_version.outputs.provider_version }}" >> Dockerfile
+          else
+            echo "RUN pip install --no-cache-dir \"apache-airflow==${{ steps.airflow_version.outputs.version }}\" apache-airflow-providers-filemaker" >> Dockerfile
+          fi
+
+      # Build and push Docker image
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v4
+        with:
+          context: .
+          push: ${{ github.event.inputs.push_to_registry != 'false' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      # Test the built image
+      - name: Test docker image
+        if: github.event.inputs.push_to_registry != 'false'
+        run: |
+          # Pull and test the latest tag
+          docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
+          echo "Testing latest tag..."
+          docker run --rm ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest python -c "from airflow.providers.filemaker.version import __version__; print(f'FileMaker Provider {__version__} successfully loaded')"
+          docker run --rm ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest python -c "import airflow; print(f'Airflow {airflow.__version__} successfully loaded')"
+          
+          # Also test the Airflow version tag
+          echo "Testing Airflow version tag: ${{ steps.airflow_version.outputs.version }}"
+          docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.airflow_version.outputs.version }}
+          docker run --rm ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.airflow_version.outputs.version }} python -c "from airflow.providers.filemaker.version import __version__; print(f'FileMaker Provider {__version__} successfully loaded')"
+          docker run --rm ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.airflow_version.outputs.version }} python -c "import airflow; print(f'Airflow {airflow.__version__} successfully loaded')"
+      
+      # Create a release for this image if it was triggered by a provider release
+      - name: Create Image Release
+        if: github.event_name == 'release'
+        uses: softprops/action-gh-release@v1
+        with:
+          name: "Airflow FileMaker Image ${{ github.event.release.tag_name }}"
+          body: |
+            Docker image for Apache Airflow ${{ steps.airflow_version.outputs.version }} with FileMaker Provider ${{ github.event.release.tag_name }} pre-installed.
+
+            ## Usage
+            ```
+            # Pull the version-specific image (with Airflow version)
+            docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.airflow_version.outputs.version }}
+            
+            # Or pull the latest image
+            docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
+            ```
+            
+            Both tags contain the same image content for this release.
+          tag_name: "docker-${{ github.event.release.tag_name }}" 

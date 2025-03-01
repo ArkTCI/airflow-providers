@@ -1,0 +1,16 @@
+[
+  {
+    "conn_id": "filemaker_default",
+    "conn_type": "filemaker",
+    "description": "FileMaker default connection",
+    "host": "your-filemaker-server.example.com",
+    "login": "your-username",
+    "password": "your-password",
+    "schema": "your-database",
+    "port": 443,
+    "extra": {
+      "verify_ssl": true,
+      "timeout": 30
+    }
+  }
+]

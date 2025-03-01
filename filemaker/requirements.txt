@@ -1,6 +1,5 @@
 # Runtime dependencies - only what's needed for the provider to function
-apache-airflow>=2.0.0
-boto3>=1.16.0
-requests>=2.25.0
-pandas>=1.0.0
-pycognito>=2022.1.0  # Required for FileMaker Cloud authentication 
+boto3
+requests
+pandas
+pycognito

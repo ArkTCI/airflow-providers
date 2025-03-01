@@ -8,7 +8,7 @@ mock>=4.0.0
 moto>=4.0.0
 joserfc>=0.9.0   # Required for moto's cognitoidp module
 coverage>=6.4.0
-
+apache-airflow>=2.10.5
 # Linting and code quality
 black>=22.0.0   # Code formatter
 isort>=5.10.0   # Import sorter

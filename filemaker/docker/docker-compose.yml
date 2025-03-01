@@ -1,0 +1,133 @@
+version: '3'
+services:
+  postgres:
+    image: postgres:13
+    environment:
+      - POSTGRES_USER=airflow
+      - POSTGRES_PASSWORD=airflow
+      - POSTGRES_DB=airflow
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-db-volume:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "airflow"]
+      interval: 5s
+      retries: 5
+
+  redis:
+    image: redis:latest
+    expose:
+      - 6379
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 30s
+      retries: 50
+
+  airflow-webserver:
+    image: ghcr.io/arktci/airflow-filemaker:latest
+    depends_on:
+      - postgres
+      - redis
+    environment:
+      - AIRFLOW__CORE__EXECUTOR=CeleryExecutor
+      - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql+psycopg2://airflow:airflow@postgres/airflow
+      - AIRFLOW__CELERY__RESULT_BACKEND=db+postgresql://airflow:airflow@postgres/airflow
+      - AIRFLOW__CELERY__BROKER_URL=redis://redis:6379/0
+      - AIRFLOW__WEBSERVER__SECRET_KEY=your_secret_key
+    volumes:
+      - ./dags:/opt/airflow/dags
+      - ./logs:/opt/airflow/logs
+      - ./plugins:/opt/airflow/plugins
+      - ./filemaker_conn.json:/opt/airflow/connections/filemaker_conn.json
+    ports:
+      - "8080:8080"
+    command: webserver
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "http://localhost:8080/health"]
+      interval: 10s
+      timeout: 10s
+      retries: 5
+
+  airflow-scheduler:
+    image: ghcr.io/arktci/airflow-filemaker:latest
+    depends_on:
+      - postgres
+      - redis
+    environment:
+      - AIRFLOW__CORE__EXECUTOR=CeleryExecutor
+      - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql+psycopg2://airflow:airflow@postgres/airflow
+      - AIRFLOW__CELERY__RESULT_BACKEND=db+postgresql://airflow:airflow@postgres/airflow
+      - AIRFLOW__CELERY__BROKER_URL=redis://redis:6379/0
+      - AIRFLOW__WEBSERVER__SECRET_KEY=your_secret_key
+    volumes:
+      - ./dags:/opt/airflow/dags
+      - ./logs:/opt/airflow/logs
+      - ./plugins:/opt/airflow/plugins
+      - ./filemaker_conn.json:/opt/airflow/connections/filemaker_conn.json
+    command: scheduler
+
+  airflow-worker:
+    image: ghcr.io/arktci/airflow-filemaker:latest
+    depends_on:
+      - postgres
+      - redis
+    environment:
+      - AIRFLOW__CORE__EXECUTOR=CeleryExecutor
+      - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql+psycopg2://airflow:airflow@postgres/airflow
+      - AIRFLOW__CELERY__RESULT_BACKEND=db+postgresql://airflow:airflow@postgres/airflow
+      - AIRFLOW__CELERY__BROKER_URL=redis://redis:6379/0
+    volumes:
+      - ./dags:/opt/airflow/dags
+      - ./logs:/opt/airflow/logs
+      - ./plugins:/opt/airflow/plugins
+      - ./filemaker_conn.json:/opt/airflow/connections/filemaker_conn.json
+    command: celery worker
+
+  airflow-init:
+    image: ghcr.io/arktci/airflow-filemaker:latest
+    depends_on:
+      - postgres
+    environment:
+      - AIRFLOW__CORE__EXECUTOR=CeleryExecutor
+      - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql+psycopg2://airflow:airflow@postgres/airflow
+      - AIRFLOW__CELERY__RESULT_BACKEND=db+postgresql://airflow:airflow@postgres/airflow
+      - AIRFLOW__CELERY__BROKER_URL=redis://redis:6379/0
+      - _AIRFLOW_DB_UPGRADE=true
+      - _AIRFLOW_WWW_USER_CREATE=true
+      - _AIRFLOW_WWW_USER_USERNAME=airflow
+      - _AIRFLOW_WWW_USER_PASSWORD=airflow
+    command: version
+    entrypoint: /bin/bash
+    volumes:
+      - ./filemaker_conn.json:/opt/airflow/connections/filemaker_conn.json
+    command: |-
+      -c "
+      function ver() {
+        printf \"%04d%04d%04d%04d\" $${1//./ }
+      }
+      airflow_version=$$(PYTHONPATH=. python -c \"import airflow; print(airflow.__version__)\")
+      airflow_version_comparable=$$(ver $${airflow_version})
+      min_airflow_version=2.2.0
+      min_airflow_version_comparable=$$(ver $${min_airflow_version})
+      if (( airflow_version_comparable < min_airflow_version_comparable )); then
+        echo -e \"\\E[31mERROR!!!: Too old Airflow version $${airflow_version}!\\e[0m\"
+        echo \"The minimum Airflow version supported is $${min_airflow_version}. Only use this or higher!\"
+        exit 1
+      fi
+      if [[ -z \"\${AIRFLOW_UID}\" ]]; then
+        echo -e \"\\E[33mWARNING!!!: AIRFLOW_UID not set!\\e[0m\"
+        export AIRFLOW_UID=\$$(id -u)
+        echo \"If you are on Linux, you SHOULD follow the instructions below to set AIRFLOW_UID environment variable\"
+      fi
+      airflow db init
+      airflow users create --username airflow --firstname airflow --lastname airflow --email airflow@example.com --role Admin --password airflow
+      # Import connections if present
+      if [ -f /opt/airflow/connections/filemaker_conn.json ]; then
+        airflow connections import /opt/airflow/connections/filemaker_conn.json
+      fi
+      "
+
+volumes:
+  postgres-db-volume: 
