@@ -5,7 +5,7 @@ This provider enables interaction with FileMaker Cloud's OData API,
 including custom Cognito authentication.
 """
 
-__version__ = "1.1.0"
+from airflow.providers.filemaker.version import __version__
 
 
 def get_provider_info():
