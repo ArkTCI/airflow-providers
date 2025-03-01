@@ -33,11 +33,11 @@ class FileMakerHook(BaseHook):
     :type filemaker_conn_id: str
     """
 
-    conn_name_attr = 'filemaker_conn_id'
-    default_conn_name = 'filemaker_default'
-    conn_type = 'filemaker'
-    hook_name = 'FileMaker Cloud'
-    
+    conn_name_attr = "filemaker_conn_id"
+    default_conn_name = "filemaker_default"
+    conn_type = "filemaker"
+    hook_name = "FileMaker Cloud"
+
     # Define the form fields for the UI connection form
     @staticmethod
     def get_ui_field_behaviour():
@@ -103,24 +103,15 @@ class FileMakerHook(BaseHook):
     def get_conn(self):
         """
         Get connection to FileMaker Cloud.
-        
+
         :return: A connection object
         """
         if not self.auth:
             # Initialize the auth object
-            self.auth = FileMakerCloudAuth(
-                host=self.host,
-                username=self.username,
-                password=self.password
-            )
-            
+            self.auth = FileMakerCloudAuth(host=self.host, username=self.username, password=self.password)
+
         # Return a connection-like object that can be used by other methods
-        return {
-            "host": self.host,
-            "database": self.database,
-            "auth": self.auth,
-            "base_url": self.get_base_url()
-        }
+        return {"host": self.host, "database": self.database, "auth": self.auth, "base_url": self.get_base_url()}
 
     def get_base_url(self) -> str:
         """
