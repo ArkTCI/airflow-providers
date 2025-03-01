@@ -113,9 +113,20 @@ jobs:
         pip install -r requirements-dev.txt
         pip install -e .
         
+    - name: Setup Airflow structure for tests
+      run: |
+        # Create a minimal airflow structure for tests
+        mkdir -p airflow/providers
+        ln -s $(pwd)/src/airflow/providers/filemaker airflow/providers/
+        export PYTHONPATH=$PYTHONPATH:$(pwd):$(pwd)/src
+        echo "PYTHONPATH=$PYTHONPATH"
+        ls -la airflow/providers/
+        
     - name: Run unit tests
       run: |
-        python -m pytest tests/unit --cov=src --cov-report=xml
+        # Add the src directory to the Python path
+        export PYTHONPATH=$PYTHONPATH:$(pwd):$(pwd)/src
+        python -m pytest tests/unit --cov=src --cov-report=xml -v
 
     - name: Run integration tests
       if: ${{ github.event_name == 'workflow_dispatch' || github.event_name == 'release' }}
@@ -124,10 +135,13 @@ jobs:
         FILEMAKER_DATABASE: ${{ secrets.FILEMAKER_DATABASE }}
         FILEMAKER_USERNAME: ${{ secrets.FILEMAKER_USERNAME }}
         FILEMAKER_PASSWORD: ${{ secrets.FILEMAKER_PASSWORD }}
+        PYTHONPATH: ${{ env.PYTHONPATH }}:$(pwd):$(pwd)/src
       run: |
         # Only run if all required secrets are available
         if [[ -n "$FILEMAKER_HOST" && -n "$FILEMAKER_DATABASE" && -n "$FILEMAKER_USERNAME" && -n "$FILEMAKER_PASSWORD" ]]; then
-          python -m pytest tests/integration --cov=src --cov-append --cov-report=xml
+          # Add the src directory to the Python path
+          export PYTHONPATH=$PYTHONPATH:$(pwd):$(pwd)/src
+          python -m pytest tests/integration --cov=src --cov-append --cov-report=xml -v
           echo "Integration tests completed successfully"
         else
           echo "Skipping integration tests - one or more credentials are missing"
