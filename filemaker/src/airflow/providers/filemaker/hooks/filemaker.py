@@ -15,7 +15,7 @@ from airflow.hooks.base import BaseHook
 from airflow.providers.filemaker.auth.cognitoauth import FileMakerCloudAuth
 
 
-class FileMakerHook:
+class FileMakerHook(BaseHook):
     """
     Hook for FileMaker Cloud OData API.
 
@@ -33,6 +33,33 @@ class FileMakerHook:
     :type filemaker_conn_id: str
     """
 
+    conn_name_attr = 'filemaker_conn_id'
+    default_conn_name = 'filemaker_default'
+    conn_type = 'filemaker'
+    hook_name = 'FileMaker Cloud'
+    
+    # Define the form fields for the UI connection form
+    @staticmethod
+    def get_ui_field_behaviour():
+        """
+        Returns custom field behavior for the Airflow connection UI.
+        """
+        return {
+            "hidden_fields": [],
+            "relabeling": {
+                "host": "FileMaker Host",
+                "schema": "FileMaker Database",
+                "login": "Username",
+                "password": "Password",
+            },
+            "placeholders": {
+                "host": "cloud.filemaker.com",
+                "schema": "your-database",
+                "login": "username",
+                "password": "password",
+            },
+        }
+
     def __init__(
         self,
         host: Optional[str] = None,
@@ -41,6 +68,7 @@ class FileMakerHook:
         password: Optional[str] = None,
         filemaker_conn_id: str = "filemaker_default",
     ) -> None:
+        super().__init__()
         self.host = host
         self.database = database
         self.username = username
@@ -71,6 +99,28 @@ class FileMakerHook:
         except Exception as e:
             # Log the error but don't fail - we might have params passed directly
             self.log.error(f"Error getting connection info: {str(e)}")
+
+    def get_conn(self):
+        """
+        Get connection to FileMaker Cloud.
+        
+        :return: A connection object
+        """
+        if not self.auth:
+            # Initialize the auth object
+            self.auth = FileMakerCloudAuth(
+                host=self.host,
+                username=self.username,
+                password=self.password
+            )
+            
+        # Return a connection-like object that can be used by other methods
+        return {
+            "host": self.host,
+            "database": self.database,
+            "auth": self.auth,
+            "base_url": self.get_base_url()
+        }
 
     def get_base_url(self) -> str:
         """
