@@ -5,15 +5,15 @@ on:
   push:
     branches: [ main ]
     paths:
-      - 'airflow-dev/providers/filemaker/src/**'
-      - 'airflow-dev/providers/filemaker/tests/**'
-      - '!airflow-dev/providers/filemaker/requirements*.txt'  # Skip changes to requirements files
+      - 'filemaker/src/**'
+      - 'filemaker/tests/**'
+      - '!filemaker/requirements*.txt'  # Skip changes to requirements files
   pull_request:
     branches: [ main ]
     paths:
-      - 'airflow-dev/providers/filemaker/src/**'
-      - 'airflow-dev/providers/filemaker/tests/**'
-      - '!airflow-dev/providers/filemaker/requirements*.txt'  # Skip changes to requirements files
+      - 'filemaker/src/**'
+      - 'filemaker/tests/**'
+      - '!filemaker/requirements*.txt'  # Skip changes to requirements files
   workflow_dispatch:  # Allow manual triggering
 
 jobs:
