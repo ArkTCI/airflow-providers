@@ -1,0 +1,86 @@
+name: FileMaker Provider Version Bump
+
+on:
+  repository_dispatch:
+    types: [bump-filemaker-version]
+  workflow_dispatch:
+    inputs:
+      bump_type:
+        description: 'Version bump type'
+        required: true
+        default: 'patch'
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
+      ref:
+        description: 'Branch or commit SHA'
+        required: false
+        default: ''
+
+jobs:
+  bump-version:
+    name: Bump Version
+    runs-on: ubuntu-latest
+    outputs:
+      new_version: ${{ steps.bump.outputs.new_version }}
+      branch_name: ${{ steps.create_branch.outputs.branch_name }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          ref: ${{ github.event.client_payload.ref || github.event.inputs.ref || github.ref }}
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+
+      - name: Set Git user
+        run: |
+          git config --global user.name "GitHub Actions"
+          git config --global user.email "actions@github.com"
+
+      # Create version file in filemaker folder
+      - name: Get current version
+        run: |
+          cd filemaker
+          # Extract version from existing file
+          VERSION=$(grep -o '"[0-9]\+\.[0-9]\+\.[0-9]\+"' src/airflow/providers/filemaker/version.py | tr -d '"')
+          echo "VERSION=$VERSION" > version.txt
+
+      - name: Run version bump script
+        id: bump
+        run: |
+          cd filemaker
+          pip install bump2version
+          bump2version ${{ github.event.inputs.bump_type || 'patch' }}
+          
+          # Read the new version
+          NEW_VERSION=$(grep -o '"[0-9]\+\.[0-9]\+\.[0-9]\+"' src/airflow/providers/filemaker/version.py | tr -d '"')
+          echo "new_version=${NEW_VERSION}" >> $GITHUB_OUTPUT
+          
+          # Update version.txt
+          echo "VERSION=${NEW_VERSION}" > version.txt
+          
+          # Commit the changes
+          git add version.txt src/airflow/providers/filemaker/version.py
+          git commit -m "Bump version to ${NEW_VERSION}"
+
+      - name: Create release branch
+        id: create_branch
+        run: |
+          NEW_VERSION="${{ steps.bump.outputs.new_version }}"
+          BRANCH_NAME="release/v${NEW_VERSION}"
+          git checkout -b ${BRANCH_NAME}
+          git push origin ${BRANCH_NAME}
+          echo "branch_name=${BRANCH_NAME}" >> $GITHUB_OUTPUT
+
+      - name: Trigger PR creation
+        uses: peter-evans/repository-dispatch@v2
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          event-type: create-filemaker-pull-request
+          client-payload: '{"new_version": "${{ steps.bump.outputs.new_version }}", "branch_name": "${{ steps.create_branch.outputs.branch_name }}"}'

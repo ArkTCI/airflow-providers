@@ -1,0 +1,54 @@
+name: FileMaker Provider Tests
+
+on:
+  repository_dispatch:
+    types: [run-filemaker-tests]
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: 'Branch or commit SHA'
+        required: false
+        default: ''
+
+jobs:
+  test:
+    name: Run Tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+        with:
+          ref: ${{ github.event.client_payload.ref || github.event.inputs.ref || github.ref }}
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          cd filemaker
+          python -m pip install --upgrade pip
+          pip install pytest pytest-cov mock
+          pip install -e .
+
+      - name: Run tests
+        run: |
+          cd filemaker
+          python -m pytest --cov=src tests/ --cov-report=xml
+
+      - name: Upload coverage reports to Codecov
+        uses: codecov/codecov-action@v5
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: ./filemaker/coverage.xml
+          fail_ci_if_error: false
+
+      - name: Trigger version bump if successful
+        if: success() && github.event.client_payload.ref && github.event.client_payload.ref == 'refs/heads/dev'
+        uses: peter-evans/repository-dispatch@v2
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          event-type: bump-filemaker-version
+          client-payload: '{"ref": "${{ github.event.client_payload.ref }}", "sha": "${{ github.event.client_payload.sha }}"}'

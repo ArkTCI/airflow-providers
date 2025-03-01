@@ -24,15 +24,6 @@ on:
         required: false
         default: ''
   # Listen for repository dispatch events from the PyPI publish workflow
-  repository_dispatch:
-    types: [build-docker-image]
-  # Use workflow_run to trigger when PyPI publish workflow completes successfully
-  workflow_run:
-    workflows: ["Publish FileMaker Provider to PyPI"]
-    types:
-      - completed
-    branches:
-      - main
   # Check for new Airflow versions daily
   schedule:
     - cron: '0 0 * * *'  # Run at midnight UTC every day

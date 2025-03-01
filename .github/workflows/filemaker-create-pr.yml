@@ -1,0 +1,62 @@
+name: FileMaker Provider Create PR
+
+on:
+  repository_dispatch:
+    types: [create-filemaker-pull-request]
+  workflow_dispatch:
+    inputs:
+      new_version:
+        description: 'New version'
+        required: true
+      branch_name:
+        description: 'Branch name'
+        required: true
+
+jobs:
+  create-pr:
+    name: Create Pull Request
+    runs-on: ubuntu-latest
+    outputs:
+      pr_number: ${{ steps.create_pr.outputs.pull-request-number }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Create Pull Request
+        id: create_pr
+        uses: peter-evans/create-pull-request@v5
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          commit-message: "Release v${{ github.event.client_payload.new_version || github.event.inputs.new_version }}"
+          branch: ${{ github.event.client_payload.branch_name || github.event.inputs.branch_name }}
+          base: main
+          title: "Release FileMaker Provider v${{ github.event.client_payload.new_version || github.event.inputs.new_version }}"
+          body: |
+            ## Release FileMaker Provider v${{ github.event.client_payload.new_version || github.event.inputs.new_version }}
+            
+            This PR was automatically created by the CI/CD pipeline.
+            
+            ### Changes:
+            - Version bump to v${{ github.event.client_payload.new_version || github.event.inputs.new_version }}
+            - All tests and linting checks have passed
+            - Release is ready for PyPI publishing and Docker image generation
+            
+            This PR will be auto-approved since all quality checks have passed.
+          labels: release, automated-pr
+          draft: false
+
+      - name: Auto-approve Pull Request
+        if: steps.create_pr.outputs.pull-request-number
+        uses: hmarr/auto-approve-action@v3
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          pull-request-number: ${{ steps.create_pr.outputs.pull-request-number }}
+
+      - name: Enable Auto-Merge
+        if: steps.create_pr.outputs.pull-request-number
+        run: |
+          gh pr merge ${{ steps.create_pr.outputs.pull-request-number }} --auto --merge
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

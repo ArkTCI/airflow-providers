@@ -1,6 +1,28 @@
 # GitHub Actions Workflows for FileMaker Provider
 
-This directory contains GitHub Actions workflows to automate the testing, building, and publishing of the FileMaker provider package.
+This directory contains GitHub Actions workflows to automate the CI/CD pipeline for the FileMaker provider package.
+
+## Workflow Diagram
+
+```mermaid
+flowchart TD
+    A[Push to dev branch] --> B[filemaker-lint.yml]
+    B -->|Success| C[filemaker-test.yml]
+    C -->|Success| D[filemaker-bump-version.yml]
+    D -->|New version| E[filemaker-create-pr.yml]
+    E -->|Create PR| F[GitHub PR]
+    F -->|Auto-approve| G[Merge to main]
+    G -->|Merged| H[filemaker-deploy.yml]
+    H -->|Publish to PyPI| I[filemaker-build-docker.yml]
+    I -->|Push Docker image| J[Docker Hub]
+    
+    M[Manual Trigger] --> B
+    M --> C
+    M --> D
+    M --> E
+    M --> H
+    M --> I
+```
 
 ## Workflows
 
@@ -63,4 +85,4 @@ If the workflow fails, check the logs for error messages. Common issues include:
 - Invalid package structure
 - PyPI token issues
 
-If you encounter problems with PyPI publishing, ensure your token has the correct permissions and hasn't expired. 
+If you encounter problems with PyPI publishing, ensure your token has the correct permissions and hasn't expired.
