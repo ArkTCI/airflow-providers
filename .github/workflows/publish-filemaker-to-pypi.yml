@@ -90,6 +90,7 @@ jobs:
         pip install -r requirements.txt
         pip install -r requirements-dev.txt
         pip install -e .
+        pip install build twine wheel bump2version
         
     - name: Verify version consistency
       run: |
@@ -257,11 +258,23 @@ jobs:
       run: |
         python -m pip install --upgrade pip
         pip install -r requirements.txt
+        pip install -r requirements-dev.txt
+        pip install -e .
         pip install build twine wheel bump2version
         
     - name: Extract current version for logging
       run: |
-        echo "Current version: $(python -c "from airflow.providers.filemaker.version import __version__; print(__version__)")"
+        # Ensure the version can be detected by installing the package first
+        ls -la src/airflow/providers/filemaker/version.py || echo "Version file not found at expected path"
+        # Add verbose output to debug the issue
+        echo "Python path: $PYTHONPATH"
+        echo "Current directory: $(pwd)"
+        echo "Module path: $(python -c "import sys; print(sys.path)")"
+        # Try to import directly from the file
+        VERSION=$(python -c "import importlib.util; spec = importlib.util.spec_from_file_location('version', 'src/airflow/providers/filemaker/version.py'); version = importlib.util.module_from_spec(spec); spec.loader.exec_module(version); print(version.__version__)")
+        echo "Current version (from file): $VERSION"
+        # Use the VERSION variable going forward
+        echo "VERSION=$VERSION" >> $GITHUB_ENV
         
     - name: Bump version
       if: github.event_name == 'release' || github.event_name == 'workflow_dispatch'
@@ -280,8 +293,8 @@ jobs:
           if [[ $TAG_NAME =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
             # Extract just the numbers without the 'v' prefix
             TAG_VERSION=${TAG_NAME:1}
-            # Get current version
-            CURRENT_VERSION=$(python -c "from airflow.providers.filemaker.version import __version__; print(__version__)")
+            # Use current version from environment variable
+            CURRENT_VERSION="${{ env.VERSION }}"
             
             # Compare the versions to determine what part was changed
             IFS='.' read -r CURRENT_MAJOR CURRENT_MINOR CURRENT_PATCH <<< "$CURRENT_VERSION"
@@ -304,9 +317,10 @@ jobs:
         # Perform the version bump
         bump2version $PART --verbose
         
-        # Display the new version
-        NEW_VERSION=$(python -c "from airflow.providers.filemaker.version import __version__; print(__version__)")
+        # Display the new version - read directly from file to ensure accuracy
+        NEW_VERSION=$(python -c "import importlib.util; spec = importlib.util.spec_from_file_location('version', 'src/airflow/providers/filemaker/version.py'); version = importlib.util.module_from_spec(spec); spec.loader.exec_module(version); print(version.__version__)")
         echo "Version bumped to: $NEW_VERSION"
+        echo "NEW_VERSION=$NEW_VERSION" >> $GITHUB_ENV
         
         # Push the version update and tags
         git push
@@ -314,7 +328,17 @@ jobs:
         
     - name: Build package
       run: |
+        echo "Building package with version: ${{ env.VERSION }}"
         python -m build
+        # Verify the version in the built package
+        PKG_NAME=$(ls dist/*.tar.gz | head -1)
+        echo "Built package: $PKG_NAME"
+        # Extract the version from the package filename
+        PKG_VERSION=$(echo "$PKG_NAME" | sed -n 's/.*-\([0-9]*\.[0-9]*\.[0-9]*\).tar.gz/\1/p')
+        echo "Package version: $PKG_VERSION"
+        if [ "$PKG_VERSION" != "${{ env.VERSION }}" ]; then
+          echo "WARNING: Package version ($PKG_VERSION) doesn't match source version (${{ env.VERSION }})"
+        fi
         
     - name: Check distribution
       run: |
