@@ -7,7 +7,7 @@ on:
       - "filemaker/tests/**"
       - "!filemaker/version.txt"
     branches:
-      - dev
+      - Dev
     tags:
       - 'v*'
   workflow_dispatch:
