@@ -21,6 +21,6 @@ description: |
   Provider for FileMaker Cloud OData API integration, including custom Cognito authentication.
 state: ready
 versions:
-  - 1.1.0
+  - 1.1.2
 dependencies:
-  - apache-airflow>=2.0.0 
+  - apache-airflow>=2.9.0 

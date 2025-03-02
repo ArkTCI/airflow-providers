@@ -1,0 +1,86 @@
+name: FileMaker Dependencies Image Build
+
+# This workflow builds and maintains the dependencies Docker image
+# It is not part of the main CI pipeline but is used by it
+
+on:
+  push:
+    paths:
+      - ".github/docker/Dockerfile.dependencies"
+      - "filemaker/requirements*.txt"
+  workflow_dispatch:
+  workflow_call:
+    inputs:
+      ref:
+        description: 'The git ref to checkout'
+        type: string
+        required: false
+        default: ${{ github.ref }}
+
+jobs:
+  check-image:
+    name: Check Dependencies Image
+    runs-on: ubuntu-latest
+    outputs:
+      image_exists: ${{ steps.check_image.outputs.image_exists }}
+    steps:
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+          
+      - name: Check if image exists
+        id: check_image
+        run: |
+          IMAGE_EXISTS=false
+          if docker pull ghcr.io/arktci/airflow-providers/filemaker-dependencies:latest &>/dev/null; then
+            IMAGE_EXISTS=true
+          fi
+          echo "image_exists=${IMAGE_EXISTS}" >> $GITHUB_OUTPUT
+          echo "Dependencies image exists: ${IMAGE_EXISTS}"
+          
+  build-image:
+    name: Build Dependencies Image
+    needs: check-image
+    if: needs.check-image.outputs.image_exists == 'false'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref || github.ref }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata for Docker
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/arktci/airflow-providers/filemaker-dependencies
+          tags: |
+            type=sha,format=long
+            type=ref,event=branch
+            latest
+
+      - name: Build and push
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          file: .github/docker/Dockerfile.dependencies
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            GITHUB_REPOSITORY=${{ github.repository }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

@@ -7,16 +7,6 @@ name: Publish FileMaker Provider to PyPI
 # 3. Configure git user identity in each job that makes commits
 
 on:
-  push:
-    paths:
-      - 'filemaker/**'
-      - '.github/workflows/publish-filemaker-to-pypi.yml'
-  pull_request:
-    paths:
-      - 'filemaker/**'
-      - '.github/workflows/publish-filemaker-to-pypi.yml'
-  release:
-    types: [created]
   workflow_dispatch:  # Allow manual triggering
     inputs:
       bump_type:

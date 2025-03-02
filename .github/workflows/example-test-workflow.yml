@@ -1,0 +1,52 @@
+name: Example Test Workflow
+
+on:
+  # This is just an example - customize triggers as needed
+  push:
+    branches: [ main ]
+    paths:
+      - 'filemaker/src/**'
+      - 'filemaker/tests/**'
+      - '!filemaker/requirements*.txt'  # Skip changes to requirements files
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'filemaker/src/**'
+      - 'filemaker/tests/**'
+      - '!filemaker/requirements*.txt'  # Skip changes to requirements files
+  workflow_dispatch:  # Allow manual triggering
+
+jobs:
+  test:
+    name: Run Tests
+    runs-on: ubuntu-latest
+    container:
+      # Use the pre-built dependencies container - all dependencies are pre-installed
+      image: ghcr.io/${{ github.repository }}/filemaker-dependencies:latest
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      # No need to install any dependencies!
+      
+      - name: Run Unit Tests
+        run: |
+          cd airflow-dev/providers/filemaker
+          python -m pytest -v --cov=.
+      
+      - name: Run Linting
+        run: |
+          cd airflow-dev/providers/filemaker
+          flake8 .
+          black --check .
+          isort --check .
+          pylint --recursive=y .
+      
+      - name: Run Type Checking
+        run: |
+          cd airflow-dev/providers/filemaker
+          mypy . 

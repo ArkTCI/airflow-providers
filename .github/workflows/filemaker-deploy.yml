@@ -1,0 +1,139 @@
+name: FileMaker Provider Deploy
+
+on:
+  pull_request:
+    types: [opened, synchronize, ready_for_review]
+    branches:
+      - main
+    paths:
+      - "filemaker/src/**"
+      - "filemaker/tests/**"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to deploy'
+        required: true
+  workflow_call:
+    inputs:
+      version:
+        description: 'Version to deploy'
+        type: string
+        required: false
+
+jobs:
+  validate-pr:
+    runs-on: ubuntu-latest
+    if: github.event.pull_request.merged == false && startsWith(github.event.pull_request.head.ref, 'release/v')
+    outputs:
+      version: ${{ steps.extract_version.outputs.version }}
+      can_merge: ${{ steps.check_status.outputs.can_merge }}
+    steps:
+      - name: Extract version from branch name
+        id: extract_version
+        run: |
+          BRANCH_NAME="${{ github.event.pull_request.head.ref }}"
+          VERSION=${BRANCH_NAME#release/v}
+          echo "version=${VERSION}" >> $GITHUB_OUTPUT
+
+      - name: Check required status checks
+        id: check_status
+        run: |
+          # Get the latest commit status checks
+          CHECKS=$(gh api repos/${{ github.repository }}/commits/${{ github.event.pull_request.head.sha }}/check-runs \
+            --jq '.check_runs[] | select(.name | test("^(lint|test)")) | {name: .name, conclusion: .conclusion}')
+          
+          # Verify lint and test passed
+          if echo "$CHECKS" | grep -q '"conclusion":"success"'; then
+            echo "Required checks passed"
+            echo "can_merge=true" >> $GITHUB_OUTPUT
+          else
+            echo "Required checks failed or incomplete"
+            echo "can_merge=false" >> $GITHUB_OUTPUT
+          fi
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Auto-merge if checks pass
+        if: steps.check_status.outputs.can_merge == 'true'
+        run: |
+          gh pr merge ${{ github.event.pull_request.number }} --merge --auto
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  publish-to-pypi:
+    name: Publish to PyPI
+    needs: [validate-pr]
+    if: |
+      (needs.validate-pr.outputs.can_merge == 'true' && needs.validate-pr.outputs.version != '') ||
+      github.event.inputs.version != '' ||
+      inputs.version != ''
+    container:
+      image: ghcr.io/arktci/airflow-providers/filemaker-dependencies:latest
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+        with:
+          ref: main
+
+      - name: Build distribution
+        run: |
+          cd filemaker
+          python -m build
+
+      - name: Publish package to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: filemaker/dist/
+          password: ${{ secrets.PYPI_API_TOKEN }}
+          skip-existing: true
+          verbose: true
+
+  build-docker-image:
+    name: Build and Push Docker Image
+    needs: [publish-to-pypi, validate-pr]
+    runs-on: ubuntu-latest
+    env:
+      REGISTRY: docker.io
+      IMAGE_NAME: arktci/airflow
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+        with:
+          ref: main
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@v2
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ vars.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Get version
+        id: get_version
+        run: |
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            VERSION="${{ needs.validate-pr.outputs.version }}"
+          elif [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            VERSION="${{ github.event.inputs.version }}"
+          else
+            VERSION="${{ inputs.version }}"
+          fi
+          echo "version=${VERSION}" >> $GITHUB_OUTPUT
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v4
+        with:
+          context: ./filemaker
+          push: true
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.get_version.outputs.version }}
+          build-args: |
+            PROVIDER_VERSION=${{ steps.get_version.outputs.version }}

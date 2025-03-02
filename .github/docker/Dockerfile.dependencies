@@ -1,0 +1,33 @@
+FROM python:3.11-slim
+
+# Accept the repository name as a build argument
+ARG GITHUB_REPOSITORY
+
+# Set image labels
+LABEL org.opencontainers.image.source="https://github.com/${GITHUB_REPOSITORY}"
+LABEL org.opencontainers.image.description="Docker image with Filemaker Provider dependencies"
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+  build-essential \
+  git \
+  curl \
+  && apt-get clean \
+  && rm -rf /var/lib/apt/lists/*
+
+# Set up working directory
+WORKDIR /app
+
+# Copy requirements files
+COPY filemaker/requirements.txt ./requirements.txt
+COPY filemaker/requirements-dev.txt ./requirements-dev.txt
+
+# Install Python dependencies
+RUN pip install --no-cache-dir --upgrade pip && \
+  pip install --no-cache-dir -r requirements-dev.txt
+
+# Set Python path for modules
+ENV PYTHONPATH=/app:$PYTHONPATH
+
+# Default command when container starts
+CMD ["bash"] 

@@ -75,7 +75,6 @@ class FileMakerHook(BaseHook):
         self.password = password
         self.filemaker_conn_id = filemaker_conn_id
         self.auth = None
-        self.log = logging.getLogger(__name__)
         self._cached_token = None
         self.cognito_idp_client = None
         self.user_pool_id = None

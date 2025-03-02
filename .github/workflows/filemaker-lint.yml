@@ -1,0 +1,94 @@
+name: FileMaker Provider PR Linting
+# This workflow only runs linting checks on PRs and manual triggers
+# It does not trigger any other workflows and is separate from the main CI pipeline
+
+# Note: For this workflow to access GitHub Container Registry, ensure:
+# 1. GitHub Actions has "Read and write permissions" under repository Settings > Actions > General
+# 2. GitHub Packages is enabled for the repository
+
+on:
+  pull_request:
+    paths:
+      - "filemaker/src/**"
+      - "filemaker/tests/**"
+      - "!filemaker/requirements.txt"
+      - "!filemaker/requirements-dev.txt"
+  workflow_dispatch:
+  workflow_call:
+    # This allows the workflow to be called from other workflows
+    outputs:
+      lint_success:
+        description: "Whether linting was successful"
+        value: ${{ jobs.lint.outputs.success }}
+
+jobs:
+  check-if-bot-commit:
+    runs-on: ubuntu-latest
+    outputs:
+      is_bot: ${{ steps.check_bot_commit.outputs.is_bot }}
+    steps:
+      - name: Check if commit is from GitHub Actions
+        id: check_bot_commit
+        run: |
+          # Default is not a bot
+          IS_BOT="false"
+          
+          # Don't check for bot commits when called from another workflow
+          if [[ "${{ github.event_name }}" != "workflow_call" ]]; then
+            # Only check head_commit for push events
+            if [[ "${{ github.event_name }}" == "push" ]]; then
+              if [[ "${{ github.event.head_commit.author.name }}" == "GitHub Actions" ]]; then
+                IS_BOT="true"
+              fi
+            fi
+          fi
+          
+          echo "is_bot=${IS_BOT}" >> $GITHUB_OUTPUT
+
+  lint:
+    needs: check-if-bot-commit
+    if: needs.check-if-bot-commit.outputs.is_bot != 'true'
+    name: Lint Code
+    runs-on: ubuntu-latest
+    outputs:
+      success: ${{ steps.set_success.outputs.success }}
+    container:
+      image: ghcr.io/arktci/airflow-providers/filemaker-dependencies:latest
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+        with:
+          ref: ${{ github.ref }}
+
+      # No need to install dependencies as they're in the container
+
+      - name: Run flake8
+        run: |
+          cd filemaker
+          flake8 src tests
+
+      - name: Run black
+        run: |
+          cd filemaker
+          black --check src tests
+
+      - name: Run isort
+        run: |
+          cd filemaker
+          isort --check src tests
+
+      - name: Run mypy
+        run: |
+          cd filemaker
+          mypy src
+
+      - name: Set success output
+        id: set_success
+        run: echo "success=true" >> $GITHUB_OUTPUT
+
+      - name: Summarize Linting Status
+        run: |
+          echo "✅ All linting checks passed successfully"
