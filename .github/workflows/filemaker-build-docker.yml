@@ -9,10 +9,18 @@ on:
         description: 'FileMaker provider version'
         required: true
 
+env:
+  REGISTRY: docker.io
+  IMAGE_NAME: arktci/airflow
+  PUSH_IMAGE: true
+
 jobs:
   build-docker:
     name: Build and Push Docker Image
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write  # Needed to push to registries
     # Container not needed for this job as it's building a Docker image
     steps:
       - name: Checkout code
@@ -22,10 +30,21 @@ jobs:
         uses: docker/setup-buildx-action@v2
 
       - name: Login to Docker Hub
+        id: docker_login
         uses: docker/login-action@v2
+        continue-on-error: true
         with:
+          registry: ${{ env.REGISTRY }}
           username: ${{ vars.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      # Handle missing Docker credentials
+      - name: Check Docker login status
+        if: steps.docker_login.outcome == 'failure'
+        run: |
+          echo "::warning::Docker Hub login failed. Building image but not pushing to registry."
+          echo "PUSH_IMAGE=false" >> $GITHUB_ENV
+          echo "Add DOCKERHUB_USERNAME variable and DOCKERHUB_TOKEN secret to enable pushing to Docker Hub."
 
       - name: Extract version
         id: extract_version
@@ -33,13 +52,42 @@ jobs:
           VERSION="${{ github.event.client_payload.provider_version || github.event.inputs.provider_version }}"
           echo "version=${VERSION}" >> $GITHUB_OUTPUT
 
+      # Extract metadata for Docker
+      - name: Extract metadata for Docker
+        id: meta
+        uses: docker/metadata-action@v4
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            # Always include latest tag
+            type=raw,value=latest
+            # Include provider version tag
+            type=raw,value=${{ steps.extract_version.outputs.version }}
+            # Include commit SHA for traceability
+            type=sha,format=short
+
       - name: Build and push Docker image
         uses: docker/build-push-action@v4
         with:
           context: ./filemaker
-          push: true
-          tags: |
-            yourdockerhub/filemaker-provider:latest
-            yourdockerhub/filemaker-provider:${{ steps.extract_version.outputs.version }}
+          push: ${{ env.PUSH_IMAGE != 'false' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
           build-args: |
             PROVIDER_VERSION=${{ steps.extract_version.outputs.version }}
+
+      # Test the built image
+      - name: Test docker image
+        if: env.PUSH_IMAGE != 'false'
+        run: |
+          # Pull and test the latest tag
+          docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
+          echo "Testing latest tag..."
+          docker run --rm ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest python -c "from airflow.providers.filemaker.version import __version__; print(f'FileMaker Provider {__version__} successfully loaded')"
+          
+          # Also test the version-specific tag
+          echo "Testing version tag: ${{ steps.extract_version.outputs.version }}"
+          docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.extract_version.outputs.version }}
+          docker run --rm ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.extract_version.outputs.version }} python -c "from airflow.providers.filemaker.version import __version__; print(f'FileMaker Provider {__version__} successfully loaded')"
