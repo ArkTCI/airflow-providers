@@ -5,7 +5,6 @@ This DAG shows how to use the FileMaker Cloud provider to extract data
 from a FileMaker Cloud database and process it.
 """
 
-import os
 from datetime import datetime, timedelta
 
 from airflow import DAG
@@ -13,11 +12,11 @@ from airflow.operators.python import PythonOperator
 
 # Try the installed package path first, fall back to direct path for development
 try:
-    from airflow.providers.filemaker.operators.filemaker import FileMakerQueryOperator, FileMakerExtractOperator
-    from airflow.providers.filemaker.sensors.filemaker import FileMakerDataSensor
+    from filemaker.operators.filemaker import FileMakerExtractOperator
+    from filemaker.sensors.filemaker import FileMakerDataSensor
 except ImportError:
-    from airflow.providers.filemaker.operators.filemaker import FileMakerQueryOperator, FileMakerExtractOperator
-    from airflow.providers.filemaker.sensors.filemaker import FileMakerDataSensor
+    from filemaker.operators.filemaker import FileMakerExtractOperator
+    from filemaker.sensors.filemaker import FileMakerDataSensor
 
 
 # Default arguments for the DAG
@@ -40,10 +39,10 @@ def process_data(**context):
 
     records = data["value"]
     record_count = len(records)
-    
+
     # Simple processing example
     processed_data = [{"id": record.get("id"), "processed": True} for record in records]
-    
+
     return {"processed": True, "count": record_count, "data": processed_data}
 
 
@@ -85,4 +84,4 @@ with DAG(
     )
 
     # Define task dependencies
-    check_data >> extract_data >> process_data_task 
+    check_data >> extract_data >> process_data_task

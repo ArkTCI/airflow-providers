@@ -14,10 +14,7 @@ import json
 from unittest import skipIf
 
 # Try the installed package path first, fall back to direct path for development
-from airflow.providers.filemaker.hooks.filemaker import FileMakerHook
-
-
-
+from filemaker.hooks.filemaker import FileMakerHook
 @skipIf(
     not all(
         os.environ.get(var)
@@ -34,13 +31,13 @@ class TestFileMakerIntegration(unittest.TestCase):
         self.database = os.environ.get("FILEMAKER_DATABASE")
         self.username = os.environ.get("FILEMAKER_USERNAME")
         self.password = os.environ.get("FILEMAKER_PASSWORD")
-        
-        print(f"\nTesting with:")
+
+        print("\nTesting with:")
         print(f"  Host: {self.host}")
         print(f"  Database: {self.database}")
         print(f"  Username: {self.username}")
         print(f"  Password: {'*' * len(self.password) if self.password else None}")
-        
+
         self.hook = FileMakerHook(
             host=self.host,
             database=self.database,
@@ -75,29 +72,29 @@ class TestFileMakerIntegration(unittest.TestCase):
             metadata = self.hook.get_odata_response(metadata_url, accept_format="application/xml")
             self.assertIsNotNone(metadata)
             print("Metadata retrieved successfully")
-            
+
             # Try to get schema info
             service_root = self.hook.get_base_url()
             print(f"\nFetching service document from: {service_root}")
             service_doc = self.hook.get_odata_response(service_root)
             print(f"Service document: {json.dumps(service_doc, indent=2)[:200]}...")
-            
+
             # If service document has value property with table names, use the first one
             if isinstance(service_doc, dict) and "value" in service_doc and len(service_doc["value"]) > 0:
                 # Extract first table name
                 first_table = service_doc["value"][0]["name"]
                 print(f"\nTesting with first available table: {first_table}")
-                
+
                 # Try to get records from this table
                 table_url = f"{service_root}/{first_table}"
                 print(f"Fetching records from: {table_url}")
                 records = self.hook.get_odata_response(table_url)
                 self.assertIsNotNone(records)
                 print(f"Successfully retrieved records. Response: {json.dumps(records, indent=2)[:200]}...")
-                
+
         except Exception as e:
             self.fail(f"Get records test failed with error: {str(e)}")
 
 
 if __name__ == "__main__":
-    unittest.main() 
+    unittest.main()

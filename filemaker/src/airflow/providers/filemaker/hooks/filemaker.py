@@ -3,7 +3,6 @@ FileMaker Cloud OData Hook for interacting with FileMaker Cloud.
 """
 
 import json
-import logging
 from typing import Any, Dict, Optional, Union
 
 import boto3

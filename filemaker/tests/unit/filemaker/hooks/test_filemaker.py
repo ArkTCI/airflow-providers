@@ -6,9 +6,9 @@ from unittest.mock import patch, MagicMock
 
 # Try the installed package path first, fall back to direct path for development
 try:
-    from airflow.providers.filemaker.hooks.filemaker import FileMakerHook
+    from filemaker.hooks.filemaker import FileMakerHook
 except ImportError:
-    from airflow.providers.filemaker.hooks.filemaker import FileMakerHook
+    from filemaker.hooks.filemaker import FileMakerHook
 
 
 class TestFileMakerHook(unittest.TestCase):
@@ -50,4 +50,4 @@ class TestFileMakerHook(unittest.TestCase):
 
 
 if __name__ == '__main__':
-    unittest.main() 
+    unittest.main()

@@ -6,9 +6,9 @@ from unittest.mock import patch, MagicMock
 
 # Try the installed package path first, fall back to direct path for development
 try:
-    from airflow.providers.filemaker.operators.filemaker import FileMakerQueryOperator, FileMakerExtractOperator
+    from filemaker.operators.filemaker import FileMakerQueryOperator, FileMakerExtractOperator
 except ImportError:
-    from airflow.providers.filemaker.operators.filemaker import FileMakerQueryOperator, FileMakerExtractOperator
+    from filemaker.operators.filemaker import FileMakerQueryOperator, FileMakerExtractOperator
 
 
 class TestFileMakerQueryOperator(unittest.TestCase):
@@ -64,4 +64,4 @@ class TestFileMakerExtractOperator(unittest.TestCase):
 
 
 if __name__ == '__main__':
-    unittest.main() 
+    unittest.main()

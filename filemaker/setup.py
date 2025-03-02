@@ -1,5 +1,3 @@
-import os
-import re
 import setuptools
 
 # Version managed by bump2version
@@ -36,4 +34,4 @@ setuptools.setup(
             "provider_info=airflow.providers.filemaker:get_provider_info"
         ]
     }
-) 
+)

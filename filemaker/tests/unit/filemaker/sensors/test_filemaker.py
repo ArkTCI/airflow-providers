@@ -6,9 +6,9 @@ from unittest.mock import patch, MagicMock
 
 # Try the installed package path first, fall back to direct path for development
 try:
-    from airflow.providers.filemaker.sensors.filemaker import FileMakerDataSensor, FileMakerChangeSensor
+    from filemaker.sensors.filemaker import FileMakerDataSensor, FileMakerChangeSensor
 except ImportError:
-    from airflow.providers.filemaker.sensors.filemaker import FileMakerDataSensor, FileMakerChangeSensor
+    from filemaker.sensors.filemaker import FileMakerDataSensor, FileMakerChangeSensor
 
 
 class TestFileMakerDataSensor(unittest.TestCase):
@@ -93,4 +93,4 @@ class TestFileMakerChangeSensor(unittest.TestCase):
 
 
 if __name__ == '__main__':
-    unittest.main() 
+    unittest.main()

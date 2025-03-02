@@ -3,11 +3,9 @@ AuthCloudAuth module for FileMaker Cloud authentication.
 """
 
 import logging
-from typing import Any, Dict, Optional, Tuple
+from typing import Optional
 
-import boto3
 import botocore
-import requests
 from botocore.config import Config
 from pycognito import Cognito
 
