@@ -8,7 +8,15 @@ on:
       - "!filemaker/version.txt"
     branches:
       - dev
+    tags:
+      - 'v*'
   workflow_dispatch:
+    inputs:
+      run_full_process:
+        description: 'Run full release process (test, version bump, PR)'
+        type: boolean
+        default: true
+        required: false
 
 permissions:
   contents: write
@@ -24,16 +32,17 @@ jobs:
   test:
     name: Run Tests
     needs: [lint]
-    if: success()
+    # Run tests on tag push or when manually triggered with full process
+    if: success() && (startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && inputs.run_full_process))
     uses: ./.github/workflows/filemaker-test.yml
     with:
       ref: ${{ github.ref }}
 
-  # For dev branch pushes, trigger version bump workflow
+  # Run version bump on tag push or manual trigger
   version-bump:
     name: Bump Version
     needs: [test]
-    if: success() && github.ref == 'refs/heads/dev' && github.event_name == 'push'
+    if: success() && (startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && inputs.run_full_process))
     uses: ./.github/workflows/filemaker-bump-version.yml
     with:
       bump_type: patch
@@ -56,6 +65,11 @@ jobs:
     steps:
       - name: Display Workflow Status
         run: |
+          echo "Event Type: ${{ github.event_name }}"
+          echo "Reference: ${{ github.ref }}"
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            echo "Manual Trigger - Full Process: ${{ inputs.run_full_process }}"
+          fi
           echo "Lint Status: ${{ needs.lint.result }}"
           echo "Test Status: ${{ needs.test.result }}"
           echo "Version Bump Status: ${{ needs.version-bump.result || 'Not Run' }}"
@@ -69,6 +83,8 @@ jobs:
           
           if [[ "${{ needs.test.result }}" == "success" ]]; then
             echo "✅ Tests passed successfully"
+          elif [[ "${{ needs.test.result }}" == "skipped" ]]; then
+            echo "⏭️ Tests were skipped (not a release process)"
           else
             echo "❌ Tests failed"
           fi
@@ -76,7 +92,7 @@ jobs:
           if [[ "${{ needs.version-bump.result || 'skipped' }}" == "success" ]]; then
             echo "✅ Version bump completed successfully"
           elif [[ "${{ needs.version-bump.result || 'skipped' }}" == "skipped" ]]; then
-            echo "⏭️ Version bump was skipped"
+            echo "⏭️ Version bump was skipped (not a release process)"
           else
             echo "❌ Version bump failed"
           fi

@@ -2,7 +2,7 @@ name: FileMaker Provider Deploy
 
 on:
   pull_request:
-    types: [closed]
+    types: [opened, synchronize, ready_for_review]
     branches:
       - main
     paths:
