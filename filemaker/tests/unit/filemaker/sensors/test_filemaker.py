@@ -4,11 +4,7 @@ Unit tests for the FileMaker sensors.
 import unittest
 from unittest.mock import patch, MagicMock
 
-# Try the installed package path first, fall back to direct path for development
-try:
-    from filemaker.sensors.filemaker import FileMakerDataSensor, FileMakerChangeSensor
-except ImportError:
-    from filemaker.sensors.filemaker import FileMakerDataSensor, FileMakerChangeSensor
+from airflow.providers.filemaker.sensors.filemaker import FileMakerDataSensor, FileMakerChangeSensor
 
 
 class TestFileMakerDataSensor(unittest.TestCase):

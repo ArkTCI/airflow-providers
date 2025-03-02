@@ -1,14 +1,13 @@
 """
-Unit tests for the FileMaker Cloud authentication module.
+Unit tests for the FileMaker auth.
 """
 import unittest
 from unittest.mock import patch, MagicMock
 
 # Try the installed package path first, fall back to direct path for development
-try:
-    from filemaker.auth.cognitoauth import FileMakerCloudAuth
-except ImportError:
-    from filemaker.auth.cognitoauth import FileMakerCloudAuth
+
+from airflow.providers.filemaker.auth.cognitoauth import FileMakerCloudAuth
+
 
 
 class TestFileMakerCloudAuth(unittest.TestCase):

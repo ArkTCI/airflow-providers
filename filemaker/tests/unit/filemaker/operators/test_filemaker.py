@@ -4,11 +4,7 @@ Unit tests for the FileMaker operators.
 import unittest
 from unittest.mock import patch, MagicMock
 
-# Try the installed package path first, fall back to direct path for development
-try:
-    from filemaker.operators.filemaker import FileMakerQueryOperator, FileMakerExtractOperator
-except ImportError:
-    from filemaker.operators.filemaker import FileMakerQueryOperator, FileMakerExtractOperator
+from airflow.providers.filemaker.operators.filemaker import FileMakerQueryOperator, FileMakerExtractOperator
 
 
 class TestFileMakerQueryOperator(unittest.TestCase):

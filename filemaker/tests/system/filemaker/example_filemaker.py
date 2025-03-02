@@ -9,14 +9,8 @@ from datetime import datetime, timedelta
 
 from airflow import DAG
 from airflow.operators.python import PythonOperator
-
-# Try the installed package path first, fall back to direct path for development
-try:
-    from filemaker.operators.filemaker import FileMakerExtractOperator
-    from filemaker.sensors.filemaker import FileMakerDataSensor
-except ImportError:
-    from filemaker.operators.filemaker import FileMakerExtractOperator
-    from filemaker.sensors.filemaker import FileMakerDataSensor
+from airflow.providers.filemaker.operators.filemaker import FileMakerExtractOperator
+from airflow.providers.filemaker.sensors.filemaker import FileMakerDataSensor
 
 
 # Default arguments for the DAG

@@ -13,8 +13,7 @@ import unittest
 import json
 from unittest import skipIf
 
-# Try the installed package path first, fall back to direct path for development
-from filemaker.hooks.filemaker import FileMakerHook
+from airflow.providers.filemaker.hooks.filemaker import FileMakerHook
 
 
 @skipIf(
