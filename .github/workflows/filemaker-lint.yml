@@ -66,29 +66,57 @@ jobs:
       # No need to install dependencies as they're in the container
 
       - name: Run flake8
+        id: flake8
+        continue-on-error: true
         run: |
           cd filemaker
           flake8 src tests
+          echo "status=$?" >> $GITHUB_OUTPUT
 
       - name: Run black
+        id: black
+        continue-on-error: true
         run: |
           cd filemaker
           black --check src tests
+          echo "status=$?" >> $GITHUB_OUTPUT
 
       - name: Run isort
+        id: isort
+        continue-on-error: true
         run: |
           cd filemaker
           isort --check src tests
+          echo "status=$?" >> $GITHUB_OUTPUT
 
       - name: Run mypy
+        id: mypy
+        continue-on-error: true
         run: |
           cd filemaker
           mypy src
+          echo "status=$?" >> $GITHUB_OUTPUT
 
-      - name: Set success output
+      - name: Determine overall success
         id: set_success
-        run: echo "success=true" >> $GITHUB_OUTPUT
-
-      - name: Summarize Linting Status
         run: |
-          echo "✅ All linting checks passed successfully"
+          if [[ "${{ steps.flake8.outputs.status }}" != "0" || \
+                "${{ steps.black.outputs.status }}" != "0" || \
+                "${{ steps.isort.outputs.status }}" != "0" || \
+                "${{ steps.mypy.outputs.status }}" != "0" ]]; then
+            echo "success=false" >> $GITHUB_OUTPUT
+            exit_code=1
+          else
+            echo "success=true" >> $GITHUB_OUTPUT
+            exit_code=0
+          fi
+          
+          # Print summary
+          echo "Linting Results:"
+          echo "- flake8: ${{ steps.flake8.outputs.status == '0' && '✅ Passed' || '❌ Failed' }}"
+          echo "- black: ${{ steps.black.outputs.status == '0' && '✅ Passed' || '❌ Failed' }}"
+          echo "- isort: ${{ steps.isort.outputs.status == '0' && '✅ Passed' || '❌ Failed' }}"
+          echo "- mypy: ${{ steps.mypy.outputs.status == '0' && '✅ Passed' || '❌ Failed' }}"
+          
+          # Exit with appropriate code to mark the job as failed if any check failed
+          exit $exit_code

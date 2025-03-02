@@ -15,6 +15,8 @@ from unittest import skipIf
 
 # Try the installed package path first, fall back to direct path for development
 from filemaker.hooks.filemaker import FileMakerHook
+
+
 @skipIf(
     not all(
         os.environ.get(var)
