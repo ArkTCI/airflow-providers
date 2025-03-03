@@ -1,5 +1,5 @@
 name: FileMaker Provider PR Linting
-# This workflow only runs linting checks on PRs and manual triggers
+# This workflow runs linting checks on PRs, Dev branch pushes, and manual triggers
 # It does not trigger any other workflows and is separate from the main CI pipeline
 
 # Note: For this workflow to access GitHub Container Registry, ensure:
@@ -7,6 +7,14 @@ name: FileMaker Provider PR Linting
 # 2. GitHub Packages is enabled for the repository
 
 on:
+  push:
+    branches:
+      - Dev
+    paths:
+      - "filemaker/src/**"
+      - "filemaker/tests/**"
+      - "!filemaker/requirements.txt"
+      - "!filemaker/requirements-dev.txt"
   pull_request:
     paths:
       - "filemaker/src/**"

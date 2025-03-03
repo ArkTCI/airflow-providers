@@ -9,6 +9,9 @@ on:
       branch_name:
         description: 'Branch name'
         required: true
+  push:
+    branches:
+      - 'release/v*'
   workflow_call:
     inputs:
       new_version:
@@ -21,10 +24,41 @@ on:
         type: string
 
 jobs:
+  # Extract version when triggered by push
+  extract-info:
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.extract.outputs.version }}
+      branch_name: ${{ steps.extract.outputs.branch_name }}
+    steps:
+      - name: Extract version and branch name
+        id: extract
+        run: |
+          BRANCH_NAME=${GITHUB_REF#refs/heads/}
+          VERSION=${BRANCH_NAME#release/v}
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "branch_name=$BRANCH_NAME" >> $GITHUB_OUTPUT
+
+  # Call the dedicated lint workflow
+  lint:
+    name: Lint Code
+    needs: [extract-info]
+    if: always() && (github.event_name != 'push' || success())
+    uses: ./.github/workflows/filemaker-lint.yml
+
+  # Call the dedicated test workflow
+  test:
+    name: Run Tests
+    needs: [extract-info]
+    if: always() && (github.event_name != 'push' || success())
+    uses: ./.github/workflows/filemaker-test.yml
+
   create-pr:
     name: Create Pull Request
+    needs: [lint, test, extract-info]
+    if: always() && needs.lint.result == 'success' && needs.test.result == 'success'
     runs-on: ubuntu-latest
-    # No container needed for this job as it doesn't require any dependencies
     outputs:
       pr_number: ${{ steps.create_pr.outputs.pull-request-number }}
     steps:
@@ -33,39 +67,50 @@ jobs:
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Generate PR body
+        id: generate_body
+        run: |
+          VERSION="${{ github.event.inputs.new_version || inputs.new_version || needs.extract-info.outputs.version }}"
+          cat > pr_body.txt << EOF
+          ## Release FileMaker Provider v$VERSION
+          
+          This PR was automatically created by the CI/CD pipeline.
+          
+          ### Pre-PR Validation Results:
+          - Linting: ✅ Passed
+          - Testing: ✅ Passed
+          
+          ### Changes:
+          - Version bump to v$VERSION
+          - Validation checks completed via dedicated workflows
+          - Release is ready for PyPI publishing and Docker image generation
+          
+          This PR will be auto-approved once all additional CI checks pass.
+          EOF
+          
+          body=$(cat pr_body.txt)
+          body="${body//'%'/'%25'}"
+          body="${body//$'\n'/'%0A'}"
+          body="${body//$'\r'/'%0D'}"
+          echo "PR_BODY=$body" >> $GITHUB_OUTPUT
+
       - name: Create Pull Request
         id: create_pr
         uses: peter-evans/create-pull-request@v5
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
-          commit-message: "Release v${{ inputs.new_version || github.event.inputs.new_version }}"
-          branch: ${{ inputs.branch_name || github.event.inputs.branch_name }}
+          commit-message: "Release v${{ github.event.inputs.new_version || inputs.new_version || needs.extract-info.outputs.version }}"
+          branch: ${{ github.event.inputs.branch_name || inputs.branch_name || needs.extract-info.outputs.branch_name }}
           base: main
-          title: "Release FileMaker Provider v${{ inputs.new_version || github.event.inputs.new_version }}"
-          body: |
-            ## Release FileMaker Provider v${{ inputs.new_version || github.event.inputs.new_version }}
-            
-            This PR was automatically created by the CI/CD pipeline.
-            
-            ### Changes:
-            - Version bump to v${{ inputs.new_version || github.event.inputs.new_version }}
-            - All tests and linting checks have passed
-            - Release is ready for PyPI publishing and Docker image generation
-            
-            This PR will be auto-approved since all quality checks have passed.
+          title: "Release FileMaker Provider v${{ github.event.inputs.new_version || inputs.new_version || needs.extract-info.outputs.version }}"
+          body: ${{ steps.generate_body.outputs.PR_BODY }}
           labels: release, automated-pr
           draft: false
 
-      - name: Auto-approve Pull Request
-        if: steps.create_pr.outputs.pull-request-number
-        uses: hmarr/auto-approve-action@v3
-        with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          pull-request-number: ${{ steps.create_pr.outputs.pull-request-number }}
-
-      - name: Enable Auto-Merge
+      - name: Display PR Info
         if: steps.create_pr.outputs.pull-request-number
         run: |
-          gh pr merge ${{ steps.create_pr.outputs.pull-request-number }} --auto --merge
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          echo "✅ Pull Request #${{ steps.create_pr.outputs.pull-request-number }} created successfully"
+          echo "✅ Linting and testing checks have passed"
+          echo "⚙️ CI checks will run automatically"
+          echo "⏳ Once all checks pass, the PR will be automatically approved and merged by the publish workflow"
