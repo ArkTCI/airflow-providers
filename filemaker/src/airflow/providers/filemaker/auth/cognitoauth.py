@@ -7,6 +7,7 @@ import re
 from typing import Optional
 
 from pycognito import Cognito
+from botocore.config import Config
 
 
 class FileMakerCloudAuth:
@@ -53,11 +54,18 @@ class FileMakerCloudAuth:
         self.client_id = client_id or "4l9rvl4mv5es1eep1qe97cautn"
 
         # Initialize Cognito client
+        boto3_config = Config(
+            region_name=self.region,
+            retries={"max_attempts": 3, "mode": "standard"}
+        )
+        
+        # Initialize with boto3_client_kwargs to match test expectations
         self.cognito = Cognito(
             user_pool_id=self.user_pool_id,
             client_id=self.client_id,
             username=self.username,
             user_pool_region=self.region,
+            boto3_client_kwargs={"config": boto3_config}
         )
 
         # Add the missing attributes
