@@ -99,11 +99,12 @@ jobs:
 
       - name: Determine overall success
         id: set_success
+        shell: bash
         run: |
-          if [[ "${{ steps.flake8.outputs.status }}" != "0" || \
-                "${{ steps.black.outputs.status }}" != "0" || \
-                "${{ steps.isort.outputs.status }}" != "0" || \
-                "${{ steps.mypy.outputs.status }}" != "0" ]]; then
+          if [ "${{ steps.flake8.outputs.status }}" != "0" ] || \
+             [ "${{ steps.black.outputs.status }}" != "0" ] || \
+             [ "${{ steps.isort.outputs.status }}" != "0" ] || \
+             [ "${{ steps.mypy.outputs.status }}" != "0" ]; then
             echo "success=false" >> $GITHUB_OUTPUT
             exit_code=1
           else

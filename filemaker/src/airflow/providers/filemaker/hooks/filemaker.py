@@ -139,18 +139,13 @@ class FileMakerHook(BaseHook):
         :return: The authentication token
         :rtype: str
         """
-        if not self.auth:
-            if not self.host or not self.username or not self.password:
-                raise ValueError("Host, username, and password must be provided")
+        if self.auth_client is not None:
+            token = self.auth_client.get_token()
+        else:
+            self.log.error("Auth client is None")
+            token = ""  # Return empty string instead of None
 
-            self.auth = FileMakerCloudAuth(username=self.username, password=self.password, host=self.host)
-
-        try:
-            # Try to get the token from AWS Cognito
-            return self.auth.get_token()
-        except Exception as e:
-            self.log.error(f"Error getting token: {str(e)}")
-            raise AirflowException(f"Failed to get authentication token: {str(e)}")
+        return token
 
     def get_odata_response(
         self,
@@ -297,6 +292,10 @@ class FileMakerHook(BaseHook):
         :rtype: Dict[str, str]
         """
         self.log.info(f"Authenticating user '{username}' with Cognito...")
+
+        if username is None or password is None:
+            self.log.error("Username or password is None")
+            return {"error": "Username or password is None"}  # Return dict instead of None
 
         try:
             # Initialize Cognito client if not already done

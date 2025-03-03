@@ -1,12 +1,13 @@
 """
 Unit tests for the FileMaker auth.
 """
-import unittest
-from unittest.mock import patch, MagicMock
 
-# Try the installed package path first, fall back to direct path for development
+import unittest
+from unittest.mock import MagicMock, patch
 
 from airflow.providers.filemaker.auth.cognitoauth import FileMakerCloudAuth
+
+# Try the installed package path first, fall back to direct path for development
 
 
 
@@ -22,7 +23,7 @@ class TestFileMakerCloudAuth(unittest.TestCase):
         self.assertEqual(auth.client_id, "4l9rvl4mv5es1eep1qe97cautn")
         self.assertEqual(auth.region, "us-west-2")
 
-    @patch('airflow.providers.filemaker.auth.cognitoauth.Cognito')
+    @patch("airflow.providers.filemaker.auth.cognitoauth.Cognito")
     def test_get_token(self, mock_cognito_class):
         """Test get_token method using pycognito."""
         # Setup mocks
@@ -42,17 +43,18 @@ class TestFileMakerCloudAuth(unittest.TestCase):
         # Verify Cognito was initialized correctly
         # Use ANY for the config object since it's not easily comparable
         from unittest.mock import ANY
+
         mock_cognito_class.assert_called_once_with(
             user_pool_id="us-west-2_NqkuZcXQY",
             client_id="4l9rvl4mv5es1eep1qe97cautn",
             username="test_user",
             user_pool_region="us-west-2",
-            boto3_client_kwargs={"config": ANY}
+            boto3_client_kwargs={"config": ANY},
         )
 
         # Verify authenticate was called with the password
         mock_cognito_instance.authenticate.assert_called_once_with(password="test_pass")
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     unittest.main()

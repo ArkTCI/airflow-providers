@@ -148,30 +148,32 @@ class FileMakerExtractOperator(BaseOperator):
         import os
 
         # Create directory if it doesn't exist
-        os.makedirs(os.path.dirname(self.output_path), exist_ok=True)
+        if self.output_path:
+            os.makedirs(os.path.dirname(self.output_path), exist_ok=True)
 
         self.log.info(f"Saving data to {self.output_path} in {self.format} format")
 
-        if self.format.lower() == "json":
+        if self.output_path:
             with open(self.output_path, "w") as f:
-                json.dump(data, f, indent=2)
-
-        elif self.format.lower() == "csv":
-            # Handle CSV output - assumes data is a list of dictionaries
-            if "value" in data and isinstance(data["value"], list):
-                items = data["value"]
-                if items:
-                    with open(self.output_path, "w", newline="") as f:
-                        writer = csv.DictWriter(f, fieldnames=items[0].keys())
-                        writer.writeheader()
-                        writer.writerows(items)
+                if self.format.lower() == "json":
+                    json.dump(data, f, indent=2)
+                elif self.format.lower() == "csv":
+                    # Handle CSV output - assumes data is a list of dictionaries
+                    if "value" in data and isinstance(data["value"], list):
+                        items = data["value"]
+                        if items:
+                            with open(self.output_path, "w", newline="") as f:
+                                writer = csv.DictWriter(f, fieldnames=items[0].keys())
+                                writer.writeheader()
+                                writer.writerows(items)
+                        else:
+                            self.log.warning("No items found in 'value' key to write to CSV")
+                    else:
+                        self.log.error("Data format not suitable for CSV output")
                 else:
-                    self.log.warning("No items found in 'value' key to write to CSV")
-            else:
-                self.log.error("Data format not suitable for CSV output")
-
+                    self.log.error(f"Unsupported output format: {self.format}")
         else:
-            self.log.error(f"Unsupported output format: {self.format}")
+            self.log.warning("No output path specified, skipping file write operation")
 
 
 class FileMakerSchemaOperator(BaseOperator):
@@ -232,6 +234,8 @@ class FileMakerSchemaOperator(BaseOperator):
             os.makedirs(os.path.dirname(self.output_path), exist_ok=True)
             with open(self.output_path, "w") as f:
                 json.dump(schema, f, indent=2)
+        else:
+            self.log.warning("No output path specified, skipping file write operation")
 
         return schema
 
@@ -256,7 +260,7 @@ class FileMakerSchemaOperator(BaseOperator):
             root = ET.fromstring(xml_content)
 
             # Find all entity types
-            schema_data = {"entities": {}, "entity_sets": {}, "relationships": []}
+            schema_data: Dict[str, Any] = {"entities": {}, "entity_sets": {}, "relationships": []}
 
             # Parse entity types
             for entity_type in root.findall(".//edm:EntityType", namespaces):

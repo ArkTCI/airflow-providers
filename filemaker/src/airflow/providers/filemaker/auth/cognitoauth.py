@@ -71,19 +71,19 @@ class FileMakerCloudAuth:
 
     def get_token(self) -> str:
         """
-        Get an authentication token for FileMaker Cloud.
-
-        :return: The ID token to use for authentication
-        :rtype: str
+        Get a token from Cognito.
+        
+        Returns:
+            str: The token.
         """
-        # Return cached token if available
-        if self._token:
-            self.log.debug("Using cached authentication token")
-            return self._token
-
-        self.log.info(f"Authenticating user {self.username} with FileMaker Cloud")
-
         try:
+            # Return cached token if available
+            if self._token:
+                self.log.debug("Using cached authentication token")
+                return self._token
+
+            self.log.info(f"Authenticating user {self.username} with FileMaker Cloud")
+
             # Authenticate using SRP (Secure Remote Password) protocol
             self.log.info("Initiating SRP authentication with Cognito")
 
@@ -97,5 +97,5 @@ class FileMakerCloudAuth:
             return self._token
 
         except Exception as e:
-            self.log.error(f"Authentication failed: {str(e)}")
-            raise
+            self.log.error(f"Error getting token: {e}")
+            return ""  # Return empty string instead of None

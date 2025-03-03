@@ -8,9 +8,10 @@ Set the following environment variables to run these tests:
 - FILEMAKER_USERNAME
 - FILEMAKER_PASSWORD
 """
+
+import json
 import os
 import unittest
-import json
 from unittest import skipIf
 
 from airflow.providers.filemaker.hooks.filemaker import FileMakerHook

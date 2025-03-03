@@ -3,7 +3,6 @@ Conftest file for pytest to help find the modules during testing.
 """
 
 import sys
-import os
 from pathlib import Path
 
 # Add the src directory to path so tests can find the filemaker module
@@ -16,14 +15,13 @@ try:
 except ImportError:
     # Create a mock airflow module structure
     import types
-    airflow = types.ModuleType('airflow')
-    providers = types.ModuleType('providers')
-    filemaker = types.ModuleType('filemaker')
-    
-    sys.modules['airflow'] = airflow
-    sys.modules['airflow.providers'] = providers
-    
+
+    airflow = types.ModuleType("airflow")
+    providers = types.ModuleType("providers")
+    filemaker = types.ModuleType("filemaker")
+    sys.modules["airflow"] = airflow
+    sys.modules["airflow.providers"] = providers
     # Create symbolic import path for tests
     from src.airflow.providers import filemaker as fm
-    sys.modules['filemaker'] = fm
 
+    sys.modules["filemaker"] = fm
