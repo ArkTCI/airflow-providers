@@ -6,8 +6,7 @@ on:
     branches:
       - main
     paths:
-      - "filemaker/src/**"
-      - "filemaker/tests/**"
+      - "filemaker/**"
   workflow_dispatch:
     inputs:
       version:
@@ -137,3 +136,6 @@ jobs:
             ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.get_version.outputs.version }}
           build-args: |
             PROVIDER_VERSION=${{ steps.get_version.outputs.version }}
+    permissions:
+      pull-requests: write
+      contents: write
