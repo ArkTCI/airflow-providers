@@ -6,7 +6,7 @@ with open("README.md", "r") as fh:
 
 setuptools.setup(
     name="arktci-airflow-provider-filemaker",
-    version="2.1.0",
+    version="2.1.1",
     author="Josh Lipton @ ArkTCI",
     author_email="josh@arktci.com",
     description="Apache Airflow provider for FileMaker Cloud",
