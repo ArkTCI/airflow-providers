@@ -6,8 +6,8 @@ import logging
 import re
 from typing import Optional
 
-from pycognito import Cognito
 from botocore.config import Config
+from pycognito import Cognito
 
 
 class FileMakerCloudAuth:
@@ -54,18 +54,22 @@ class FileMakerCloudAuth:
         self.client_id = client_id or "4l9rvl4mv5es1eep1qe97cautn"
 
         # Initialize Cognito client
-        boto3_config = Config(
-            region_name=self.region,
-            retries={"max_attempts": 3, "mode": "standard"}
-        )
-        
+        boto3_config = Config(region_name=self.region, retries={"max_attempts": 3, "mode": "standard"})
+
         # Initialize with boto3_client_kwargs to match test expectations
+        boto3_client_kwargs = {
+            "config": boto3_config,
+            # Provide empty credentials to prevent boto3 from looking in ~/.aws/credentials
+            "aws_access_key_id": "",
+            "aws_secret_access_key": "",
+        }
+        
         self.cognito = Cognito(
             user_pool_id=self.user_pool_id,
             client_id=self.client_id,
             username=self.username,
             user_pool_region=self.region,
-            boto3_client_kwargs={"config": boto3_config}
+            boto3_client_kwargs=boto3_client_kwargs,
         )
 
         # Add the missing attributes
@@ -98,16 +102,29 @@ class FileMakerCloudAuth:
         try:
             # Authenticate using SRP (Secure Remote Password) protocol
             self.log.info("Initiating SRP authentication with Cognito")
+            self.log.debug(f"Region: {self.region}, User Pool ID: {self.user_pool_id}, Client ID: {self.client_id}")
 
             # Create Cognito client if not already created
             if not self._cognito_client:
                 self._create_cognito_client()
+                self.log.debug("Created Cognito client")
 
-            # Authenticate with Cognito
-            self._cognito_client.authenticate_user()
+            # Authenticate with Cognito - need to pass the password
+            self.log.debug(f"Attempting to authenticate user: {self.username}")
+            if not self.password:
+                self.log.error("Password is empty or None")
+                return ""
+                
+            self._cognito_client.authenticate(password=self.password)
+            self.log.debug("Authentication successful")
 
             # Get the ID token
             token = self._cognito_client.id_token
+            if not token:
+                self.log.error("Authentication succeeded but no token was returned")
+                return ""
+                
+            self.log.debug(f"Received token of length: {len(token)}")
 
             # Cache the token
             self._token = token
@@ -115,5 +132,6 @@ class FileMakerCloudAuth:
             return token
         except Exception as e:
             self.log.error(f"Authentication failed: {str(e)}")
+            self.log.exception("Detailed exception information:")
             # Return empty string instead of None or raising an exception
             return ""
