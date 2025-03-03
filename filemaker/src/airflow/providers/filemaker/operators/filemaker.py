@@ -148,30 +148,32 @@ class FileMakerExtractOperator(BaseOperator):
         import os
 
         # Create directory if it doesn't exist
-        os.makedirs(os.path.dirname(self.output_path), exist_ok=True)
+        if self.output_path:
+            os.makedirs(os.path.dirname(self.output_path), exist_ok=True)
 
         self.log.info(f"Saving data to {self.output_path} in {self.format} format")
 
-        if self.format.lower() == "json":
+        if self.output_path:
             with open(self.output_path, "w") as f:
-                json.dump(data, f, indent=2)
-
-        elif self.format.lower() == "csv":
-            # Handle CSV output - assumes data is a list of dictionaries
-            if "value" in data and isinstance(data["value"], list):
-                items = data["value"]
-                if items:
-                    with open(self.output_path, "w", newline="") as f:
-                        writer = csv.DictWriter(f, fieldnames=items[0].keys())
-                        writer.writeheader()
-                        writer.writerows(items)
+                if self.format.lower() == "json":
+                    json.dump(data, f, indent=2)
+                elif self.format.lower() == "csv":
+                    # Handle CSV output - assumes data is a list of dictionaries
+                    if "value" in data and isinstance(data["value"], list):
+                        items = data["value"]
+                        if items:
+                            with open(self.output_path, "w", newline="") as f:
+                                writer = csv.DictWriter(f, fieldnames=items[0].keys())
+                                writer.writeheader()
+                                writer.writerows(items)
+                        else:
+                            self.log.warning("No items found in 'value' key to write to CSV")
+                    else:
+                        self.log.error("Data format not suitable for CSV output")
                 else:
-                    self.log.warning("No items found in 'value' key to write to CSV")
-            else:
-                self.log.error("Data format not suitable for CSV output")
-
+                    self.log.error(f"Unsupported output format: {self.format}")
         else:
-            self.log.error(f"Unsupported output format: {self.format}")
+            self.log.warning("No output path specified, skipping file write operation")
 
 
 class FileMakerSchemaOperator(BaseOperator):
@@ -232,17 +234,20 @@ class FileMakerSchemaOperator(BaseOperator):
             os.makedirs(os.path.dirname(self.output_path), exist_ok=True)
             with open(self.output_path, "w") as f:
                 json.dump(schema, f, indent=2)
+        else:
+            self.log.warning("No output path specified, skipping file write operation")
 
         return schema
 
     def _parse_xml_schema(self, xml_content: str) -> Dict[str, Any]:
         """
-        Parse the OData XML schema to extract entities and properties.
+        Parse XML schema content.
 
-        :param xml_content: The XML content from the metadata endpoint
-        :type xml_content: str
-        :return: Dictionary containing the parsed schema
-        :rtype: Dict[str, Any]
+        Args:
+            xml_content: The XML content to parse
+
+        Returns:
+            Dict[str, Any]: Parsed schema
         """
         import xml.etree.ElementTree as ET
 
@@ -256,21 +261,27 @@ class FileMakerSchemaOperator(BaseOperator):
             root = ET.fromstring(xml_content)
 
             # Find all entity types
-            schema_data = {"entities": {}, "entity_sets": {}, "relationships": []}
+            schema_data: Dict[str, Any] = {"entities": {}, "entity_sets": {}, "relationships": []}
 
             # Parse entity types
             for entity_type in root.findall(".//edm:EntityType", namespaces):
                 entity_name = entity_type.get("Name")
+                if entity_name is None:
+                    entity_name = ""  # Default to empty string if None
                 properties = []
 
-                for prop in entity_type.findall("./edm:Property", namespaces):
-                    properties.append(
-                        {
-                            "name": prop.get("Name"),
-                            "type": prop.get("Type"),
-                            "nullable": prop.get("Nullable", "true") == "true",
-                        }
-                    )
+                # Fix Element handling for property elements
+                for property_elem in entity_type.findall("./edm:Property", namespaces):
+                    prop_name = property_elem.get("Name", "")  # Default to empty string if None
+                    prop_type = property_elem.get("Type", "")  # Default to empty string if None
+
+                    # Now prop_name and prop_type are guaranteed to be strings
+                    if prop_name.startswith("@"):
+                        # Handle special properties
+                        pass
+
+                    # Add property to the list
+                    properties.append({"name": prop_name, "type": prop_type})
 
                 # Find keys
                 key_props = []
@@ -296,25 +307,34 @@ class FileMakerSchemaOperator(BaseOperator):
             # Parse navigation properties (relationships)
             for entity_type in root.findall(".//edm:EntityType", namespaces):
                 source_entity = entity_type.get("Name")
+                if source_entity is None:
+                    source_entity = ""  # Default to empty string if None
 
                 for nav_prop in entity_type.findall("./edm:NavigationProperty", namespaces):
                     target_type = nav_prop.get("Type")
                     # Handle both EntityType and Collection(EntityType)
-                    if target_type.startswith("Collection("):
+                    if target_type is not None and target_type.startswith("Collection("):
                         # Extract entity type from Collection(Namespace.EntityType)
-                        target_entity = target_type[11:-1].split(".")[-1]
-                        relationship_type = "one-to-many"
+                        target_entity = target_type[11:-1]
+                        if target_entity is not None and isinstance(target_entity, str):
+                            parts = target_entity.split(".")
+                            if parts and len(parts) > 0:
+                                target_entity = parts[-1]
                     else:
-                        # Extract entity type from Namespace.EntityType
-                        target_entity = target_type.split(".")[-1]
-                        relationship_type = "one-to-one"
+                        # Handle direct entity type reference
+                        if target_type is not None and isinstance(target_type, str):
+                            parts = target_type.split(".")
+                            if parts and len(parts) > 0:
+                                target_entity = parts[-1]
+                        else:
+                            target_entity = ""
 
                     schema_data["relationships"].append(
                         {
                             "source_entity": source_entity,
                             "target_entity": target_entity,
                             "name": nav_prop.get("Name"),
-                            "type": relationship_type,
+                            "type": "one-to-one" if target_entity else "one-to-many",
                         }
                     )
 

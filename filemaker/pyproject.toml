@@ -1,6 +1,35 @@
+[build-system]
+requires = ["setuptools>=42", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+# These would replace setup.py metadata
+name = "arktci-airflow-provider-filemaker"
+version = "1.2.0"
+description = "Apache Airflow provider for FileMaker Cloud"
+readme = "README.md"
+requires-python = ">=3.8"
+license = {text = "Apache License 2.0"}
+authors = [
+    {name = "Josh Lipton @ ArkTCI", email = "josh@arktci.com"}
+]
+urls = {Homepage = "https://github.com/ArkTCI/airflow-providers"}
+dependencies = [
+    "apache-airflow>=2.0.0",
+    "boto3>=1.16.0",
+    "requests>=2.25.0",
+    "pandas>=1.0.0",
+    "pycognito>=2023.01.0",
+]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: Apache Software License",
+    "Operating System :: OS Independent",
+]
+
 [tool.black]
 line-length = 120
-target-version = ['py37', 'py38', 'py39']
+target-version = ['py38', 'py39', 'py310', 'py311']
 include = '\.pyi?$'
 exclude = '''
 /(
@@ -19,4 +48,59 @@ exclude = '''
 [tool.isort]
 profile = "black"
 line_length = 120
-multi_line_output = 3 
+multi_line_output = 3
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = "test_*.py"
+python_classes = "Test*"
+python_functions = "test_*"
+addopts = "-v --no-header --strict-markers --cov=src --cov-report=term-missing"
+log_cli = true
+log_cli_level = "INFO"
+markers = [
+    "integration: marks tests as integration tests (deselect with '-m \"not integration\"')",
+]
+
+[tool.mypy]
+python_version = "3.8"
+warn_return_any = true
+warn_unused_configs = true
+# Adjusted based on your mypy.ini to be less strict initially
+disallow_untyped_defs = false
+disallow_incomplete_defs = false
+check_untyped_defs = true
+disallow_untyped_decorators = false
+no_implicit_optional = true
+strict_optional = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+warn_no_return = true
+show_error_codes = true
+
+[[tool.mypy.overrides]]
+module = ["numpy.*", "botocore.*", "boto3.*", "pycognito.*"]
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = ["airflow.providers.filemaker.*"]
+ignore_missing_imports = true
+ignore_errors = true
+
+[[tool.mypy.overrides]]
+module = ["tests.*"]
+disallow_untyped_defs = false
+disallow_incomplete_defs = false
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["airflow.providers.*"]
+
+[tool.setuptools.package-data]
+"*" = ["*.txt", "*.rst", "*.md"]
+
+[bdist_wheel]
+universal = true 

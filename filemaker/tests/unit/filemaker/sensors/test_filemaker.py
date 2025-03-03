@@ -1,20 +1,17 @@
 """
 Unit tests for the FileMaker sensors.
 """
-import unittest
-from unittest.mock import patch, MagicMock
 
-# Try the installed package path first, fall back to direct path for development
-try:
-    from airflow.providers.filemaker.sensors.filemaker import FileMakerDataSensor, FileMakerChangeSensor
-except ImportError:
-    from airflow.providers.filemaker.sensors.filemaker import FileMakerDataSensor, FileMakerChangeSensor
+import unittest
+from unittest.mock import MagicMock, patch
+
+from airflow.providers.filemaker.sensors.filemaker import FileMakerChangeSensor, FileMakerDataSensor
 
 
 class TestFileMakerDataSensor(unittest.TestCase):
     """Test class for FileMakerDataSensor."""
 
-    @patch('airflow.providers.filemaker.sensors.filemaker.FileMakerHook')
+    @patch("airflow.providers.filemaker.sensors.filemaker.FileMakerHook")
     def test_poke_success(self, mock_hook_class):
         """Test poke method when condition is met."""
         # Setup mock
@@ -29,7 +26,7 @@ class TestFileMakerDataSensor(unittest.TestCase):
             table="test_table",
             condition="field eq 'value'",
             expected_count=3,  # Expecting at least 3 records
-            filemaker_conn_id="test_conn_id"
+            filemaker_conn_id="test_conn_id",
         )
         result = sensor.poke(context={})
 
@@ -39,10 +36,10 @@ class TestFileMakerDataSensor(unittest.TestCase):
         mock_hook.get_base_url.assert_called_once()
         mock_hook.get_odata_response.assert_called_once_with(
             endpoint="https://test-host/fmi/odata/v4/test-db/test_table/$count?$filter=field eq 'value'",
-            accept_format="text/plain"
+            accept_format="text/plain",
         )
 
-    @patch('airflow.providers.filemaker.sensors.filemaker.FileMakerHook')
+    @patch("airflow.providers.filemaker.sensors.filemaker.FileMakerHook")
     def test_poke_failure(self, mock_hook_class):
         """Test poke method when condition is not met."""
         # Setup mock
@@ -57,7 +54,7 @@ class TestFileMakerDataSensor(unittest.TestCase):
             table="test_table",
             condition="field eq 'value'",
             expected_count=3,  # Expecting at least 3 records
-            filemaker_conn_id="test_conn_id"
+            filemaker_conn_id="test_conn_id",
         )
         result = sensor.poke(context={})
 
@@ -68,7 +65,7 @@ class TestFileMakerDataSensor(unittest.TestCase):
 class TestFileMakerChangeSensor(unittest.TestCase):
     """Test class for FileMakerChangeSensor."""
 
-    @patch('airflow.providers.filemaker.sensors.filemaker.FileMakerHook')
+    @patch("airflow.providers.filemaker.sensors.filemaker.FileMakerHook")
     def test_poke_with_changes(self, mock_hook_class):
         """Test poke method when changes are detected."""
         # Setup mock
@@ -83,7 +80,7 @@ class TestFileMakerChangeSensor(unittest.TestCase):
             table="test_table",
             modified_field="modified_date",
             last_modified_ts="2023-01-01T00:00:00Z",
-            filemaker_conn_id="test_conn_id"
+            filemaker_conn_id="test_conn_id",
         )
         result = sensor.poke(context={})
 
@@ -92,5 +89,5 @@ class TestFileMakerChangeSensor(unittest.TestCase):
         mock_hook_class.assert_called_once_with(filemaker_conn_id="test_conn_id")
 
 
-if __name__ == '__main__':
-    unittest.main() 
+if __name__ == "__main__":
+    unittest.main()

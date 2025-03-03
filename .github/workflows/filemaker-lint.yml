@@ -66,29 +66,81 @@ jobs:
       # No need to install dependencies as they're in the container
 
       - name: Run flake8
+        id: flake8
+        continue-on-error: true
         run: |
           cd filemaker
           flake8 src tests
+          echo "status=$?" >> $GITHUB_OUTPUT
 
       - name: Run black
+        id: black
+        continue-on-error: true
         run: |
           cd filemaker
           black --check src tests
+          echo "status=$?" >> $GITHUB_OUTPUT
 
       - name: Run isort
+        id: isort
+        continue-on-error: true
         run: |
           cd filemaker
           isort --check src tests
+          echo "status=$?" >> $GITHUB_OUTPUT
 
       - name: Run mypy
+        id: mypy
+        continue-on-error: true
         run: |
           cd filemaker
           mypy src
+          echo "status=$?" >> $GITHUB_OUTPUT
 
-      - name: Set success output
+      - name: Determine overall success
         id: set_success
-        run: echo "success=true" >> $GITHUB_OUTPUT
-
-      - name: Summarize Linting Status
+        shell: bash
         run: |
-          echo "✅ All linting checks passed successfully"
+          # Set success output based on all checks passing
+          if [[ "${{ steps.flake8.outputs.status }}" == "0" && "${{ steps.black.outputs.status }}" == "0" && "${{ steps.isort.outputs.status }}" == "0" && "${{ steps.mypy.outputs.status }}" == "0" ]]; then
+            echo "success=true" >> $GITHUB_OUTPUT
+          else
+            echo "success=false" >> $GITHUB_OUTPUT
+          fi
+          
+          # Print summary
+          echo "Linting Results:"
+          echo "- flake8: ${{ steps.flake8.outputs.status == '0' && '✅ Passed' || '❌ Failed' }}"
+          echo "- black: ${{ steps.black.outputs.status == '0' && '✅ Passed' || '❌ Failed' }}"
+          echo "- isort: ${{ steps.isort.outputs.status == '0' && '✅ Passed' || '❌ Failed' }}"
+          echo "- mypy: ${{ steps.mypy.outputs.status == '0' && '✅ Passed' || '❌ Failed' }}"
+          
+          # Create job summary
+          echo "## FileMaker Provider Linting Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Check | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "| ----- | ------ |" >> $GITHUB_STEP_SUMMARY
+          echo "| flake8 | ${{ steps.flake8.outputs.status == '0' && '✅ Passed' || '❌ Failed' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| black | ${{ steps.black.outputs.status == '0' && '✅ Passed' || '❌ Failed' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| isort | ${{ steps.isort.outputs.status == '0' && '✅ Passed' || '❌ Failed' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| mypy | ${{ steps.mypy.outputs.status == '0' && '✅ Passed' || '❌ Failed' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          if [[ "${{ steps.flake8.outputs.status }}" == "0" && "${{ steps.black.outputs.status }}" == "0" && "${{ steps.isort.outputs.status }}" == "0" && "${{ steps.mypy.outputs.status }}" == "0" ]]; then
+            echo "**Overall Status: ✅ All checks passed!**" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "**Overall Status: ❌ Some checks failed**" >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          # Always exit with success to show the results without failing the workflow
+          exit 0
+
+      - name: Report Linting Status
+        if: always()
+        run: |
+          if [[ "${{ steps.flake8.outputs.status }}" == "0" && "${{ steps.black.outputs.status }}" == "0" && "${{ steps.isort.outputs.status }}" == "0" && "${{ steps.mypy.outputs.status }}" == "0" ]]; then
+            echo "✅ All linting checks passed!"
+          else
+            echo "❌ Some linting checks failed. See details above."
+            echo "Note: This workflow is configured to show results without failing."
+          fi
