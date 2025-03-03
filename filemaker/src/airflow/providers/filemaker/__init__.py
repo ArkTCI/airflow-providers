@@ -6,7 +6,7 @@ including custom Cognito authentication.
 """
 
 # Version managed by bump2version
-__version__ = "1.1.5"
+__version__ = "1.1.6"
 
 
 def get_provider_info():
