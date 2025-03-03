@@ -115,7 +115,7 @@ jobs:
           echo "| Lint | ${{ needs.lint.result == 'success' && '✅ Passed' || (needs.lint.result == 'skipped' && '⏭️ Skipped' || '❌ Failed') }} |" >> $GITHUB_STEP_SUMMARY
           echo "| Test | ${{ needs.test.result == 'success' && '✅ Passed' || (needs.test.result == 'skipped' && '⏭️ Skipped' || '❌ Failed') }} |" >> $GITHUB_STEP_SUMMARY
           
-          if [[ "${{ github.event_name }}" != "workflow_dispatch" && startsWith(github.ref, 'refs/tags/v') ]]; then
+          if [[ "${{ github.event_name }}" != "workflow_dispatch" && "${{ github.ref }}" == refs/tags/v* ]]; then
             echo "| Notify Publish | ${{ needs.notify-publish.result == 'success' && '✅ Sent' || (needs.notify-publish.result == 'skipped' && '⏭️ Skipped' || '❌ Failed') }} |" >> $GITHUB_STEP_SUMMARY
             echo "" >> $GITHUB_STEP_SUMMARY
             echo "**Note:** Actual publishing is handled by the publish-filemaker-to-pypi.yml workflow" >> $GITHUB_STEP_SUMMARY
@@ -132,7 +132,7 @@ jobs:
           echo "Lint Status: ${{ needs.lint.result }}"
           echo "Test Status: ${{ needs.test.result }}"
           
-          if [[ "${{ github.event_name }}" != "workflow_dispatch" && startsWith(github.ref, 'refs/tags/v') ]]; then
+          if [[ "${{ github.event_name }}" != "workflow_dispatch" && "${{ github.ref }}" == refs/tags/v* ]]; then
             echo "Notify Publish Status: ${{ needs.notify-publish.result }}"
             echo "Note: Actual publishing is handled by the publish-filemaker-to-pypi.yml workflow"
           fi 
