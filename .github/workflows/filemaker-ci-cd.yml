@@ -1,7 +1,6 @@
 name: FileMaker Provider CI/CD
 
 on:
-  push:
   workflow_dispatch:
     inputs:
       run_tests_only:
