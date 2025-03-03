@@ -139,11 +139,22 @@ class FileMakerHook(BaseHook):
         Returns:
             str: The authentication token
         """
+        # Initialize auth_client if it's None but we have credentials
+        if self.auth_client is None and self.host and self.username and self.password:
+            self.log.info("Initializing auth client")
+            self.auth_client = FileMakerCloudAuth(host=self.host, username=self.username, password=self.password)
+            
         if self.auth_client is not None:
             token = self.auth_client.get_token()
+            # Add debugging
+            if token:
+                self.log.info(f"Token received with length: {len(token)}")
+                self.log.info(f"Token prefix: {token[:20]}...")
+            else:
+                self.log.error("Empty token received from auth_client")
             return token
         else:
-            self.log.error("Auth client is None")
+            self.log.error("Auth client is None and could not be initialized")
             return ""  # Return empty string instead of None
 
     def get_odata_response(
@@ -170,6 +181,7 @@ class FileMakerHook(BaseHook):
         headers = {"Authorization": f"FMID {token}", "Accept": accept_format}
 
         # Execute request
+        self.log.info(f"Making request to: {endpoint}")
         response = requests.get(endpoint, headers=headers, params=params)
 
         # Check response
@@ -177,13 +189,22 @@ class FileMakerHook(BaseHook):
             raise Exception(f"OData API error: {response.status_code} - {response.text}")
 
         # Return appropriate format based on accept header
-        response_data = response.json()
-
-        if isinstance(response_data, dict):
-            return response_data
+        if accept_format == "application/xml" or "xml" in response.headers.get("Content-Type", ""):
+            self.log.info("Received XML response")
+            return {"data": response.text}
         else:
-            # Convert string or other types to dict
-            return {"data": response_data}
+            try:
+                self.log.info("Parsing JSON response")
+                response_data = response.json()
+                if isinstance(response_data, dict):
+                    return response_data
+                else:
+                    # Convert string or other types to dict
+                    return {"data": response_data}
+            except Exception as e:
+                self.log.error(f"Error parsing response as JSON: {str(e)}")
+                # Return the raw text if JSON parsing fails
+                return {"data": response.text}
 
     def get_records(
         self,
