@@ -1,14 +1,12 @@
 import setuptools
 
-# Version managed by bump2version
-VERSION = "1.1.4"
 
 with open("README.md", "r") as fh:
     long_description = fh.read()
 
 setuptools.setup(
     name="arktci-airflow-provider-filemaker",
-    version="1.1.2",
+    version="1.1.4",
     author="Josh Lipton @ ArkTCI",
     author_email="josh@arktci.com",
     description="Apache Airflow provider for FileMaker Cloud",
