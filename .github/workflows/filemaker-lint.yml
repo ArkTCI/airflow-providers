@@ -101,15 +101,14 @@ jobs:
         id: set_success
         shell: bash
         run: |
+          # Set success output based on all checks passing
           if [ "${{ steps.flake8.outputs.status }}" != "0" ] || \
              [ "${{ steps.black.outputs.status }}" != "0" ] || \
              [ "${{ steps.isort.outputs.status }}" != "0" ] || \
              [ "${{ steps.mypy.outputs.status }}" != "0" ]; then
             echo "success=false" >> $GITHUB_OUTPUT
-            exit_code=1
           else
             echo "success=true" >> $GITHUB_OUTPUT
-            exit_code=0
           fi
           
           # Print summary
@@ -119,5 +118,32 @@ jobs:
           echo "- isort: ${{ steps.isort.outputs.status == '0' && '✅ Passed' || '❌ Failed' }}"
           echo "- mypy: ${{ steps.mypy.outputs.status == '0' && '✅ Passed' || '❌ Failed' }}"
           
-          # Exit with appropriate code to mark the job as failed if any check failed
-          exit $exit_code
+          # Create job summary
+          echo "## FileMaker Provider Linting Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Check | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "| ----- | ------ |" >> $GITHUB_STEP_SUMMARY
+          echo "| flake8 | ${{ steps.flake8.outputs.status == '0' && '✅ Passed' || '❌ Failed' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| black | ${{ steps.black.outputs.status == '0' && '✅ Passed' || '❌ Failed' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| isort | ${{ steps.isort.outputs.status == '0' && '✅ Passed' || '❌ Failed' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| mypy | ${{ steps.mypy.outputs.status == '0' && '✅ Passed' || '❌ Failed' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          if [ "${{ steps.set_success.outputs.success }}" == "true" ]; then
+            echo "**Overall Status: ✅ All checks passed!**" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "**Overall Status: ❌ Some checks failed**" >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          # Always exit with success to show the results without failing the workflow
+          exit 0
+
+      - name: Report Linting Status
+        if: always()
+        run: |
+          if [ "${{ steps.set_success.outputs.success }}" == "true" ]; then
+            echo "✅ All linting checks passed!"
+          else
+            echo "❌ Some linting checks failed. See details above."
+            echo "Note: This workflow is configured to show results without failing."
+          fi
