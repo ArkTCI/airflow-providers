@@ -22,16 +22,7 @@ setuptools.setup(
         "License :: OSI Approved :: Apache Software License",
         "Operating System :: OS Independent",
     ],
-    python_requires='>=3.7',
-    install_requires=[
-        'apache-airflow>=2.0.0',
-        'boto3>=1.16.0',
-        'requests>=2.25.0',
-        'pandas>=1.0.0'
-    ],
-    entry_points={
-        "apache_airflow_provider": [
-            "provider_info=airflow.providers.filemaker:get_provider_info"
-        ]
-    }
+    python_requires=">=3.7",
+    install_requires=["apache-airflow>=2.0.0", "boto3>=1.16.0", "requests>=2.25.0", "pandas>=1.0.0"],
+    entry_points={"apache_airflow_provider": ["provider_info=airflow.providers.filemaker:get_provider_info"]},
 )

@@ -3,7 +3,7 @@ Unit tests for the FileMaker auth.
 """
 
 import unittest
-from unittest.mock import MagicMock, patch, ANY
+from unittest.mock import ANY, MagicMock, patch
 
 import boto3
 from moto import mock_aws
@@ -20,33 +20,33 @@ class TestFileMakerCloudAuth(unittest.TestCase):
     def test_init(self):
         """Test initialization with fixed credentials."""
         # Create a mock user pool and client using moto
-        cognito_client = boto3.client('cognito-idp', region_name='us-west-2')
-        
+        cognito_client = boto3.client("cognito-idp", region_name="us-west-2")
+
         # Create a user pool
         user_pool = cognito_client.create_user_pool(
-            PoolName='test-pool',
-            UsernameAttributes=['email'],
+            PoolName="test-pool",
+            UsernameAttributes=["email"],
         )
-        
+
         # Create a client
         client = cognito_client.create_user_pool_client(
-            UserPoolId=user_pool['UserPool']['Id'],
-            ClientName='test-client',
+            UserPoolId=user_pool["UserPool"]["Id"],
+            ClientName="test-client",
             GenerateSecret=False,
         )
-        
+
         # Now test our class with the mocked AWS environment
         auth = FileMakerCloudAuth(
-            username="test_user", 
-            password="test_pass", 
+            username="test_user",
+            password="test_pass",
             host="test-host",
-            user_pool_id=user_pool['UserPool']['Id'],
-            client_id=client['UserPoolClient']['ClientId']
+            user_pool_id=user_pool["UserPool"]["Id"],
+            client_id=client["UserPoolClient"]["ClientId"],
         )
 
         # Check that the credentials are set
-        self.assertEqual(auth.user_pool_id, user_pool['UserPool']['Id'])
-        self.assertEqual(auth.client_id, client['UserPoolClient']['ClientId'])
+        self.assertEqual(auth.user_pool_id, user_pool["UserPool"]["Id"])
+        self.assertEqual(auth.client_id, client["UserPoolClient"]["ClientId"])
         self.assertEqual(auth.region, "us-west-2")
 
     @patch("airflow.providers.filemaker.auth.cognitoauth.Cognito")
@@ -72,11 +72,15 @@ class TestFileMakerCloudAuth(unittest.TestCase):
             client_id="4l9rvl4mv5es1eep1qe97cautn",
             username="test_user",
             user_pool_region="us-west-2",
-            boto3_client_kwargs={"config": ANY}
+            boto3_client_kwargs={
+                "config": ANY,
+                "aws_access_key_id": "",
+                "aws_secret_access_key": "",
+            },
         )
 
-        # Verify authenticate_user was called
-        mock_cognito_instance.authenticate_user.assert_called_once()
+        # Verify authenticate was called with the password
+        mock_cognito_instance.authenticate.assert_called_once_with(password="test_pass")
 
 
 if __name__ == "__main__":
