@@ -1,0 +1,14 @@
+## Release FileMaker Provider v1.2.0
+
+This PR was automatically created by the CI/CD pipeline.
+
+### Pre-PR Validation Results:
+- Linting: ✅ Passed
+- Testing: ✅ Passed
+
+### Changes:
+- Version bump to v1.2.0
+- Validation checks completed via dedicated workflows
+- Release is ready for PyPI publishing and Docker image generation
+
+This PR will be auto-approved once all additional CI checks pass.
