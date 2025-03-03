@@ -1,7 +1,7 @@
 import setuptools
 
 # Version managed by bump2version
-VERSION = "1.1.2"
+VERSION = "1.1.4"
 
 with open("README.md", "r") as fh:
     long_description = fh.read()

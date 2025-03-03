@@ -67,10 +67,6 @@ jobs:
           VERSION=$(grep -o '"[0-9]\+\.[0-9]\+\.[0-9]\+"' version.py | tr -d '"')
           echo "VERSION=$VERSION" > version.txt
 
-      - name: Install bump2version
-        run: |
-          pip install bump2version
-
       - name: Run version bump script
         id: bump
         run: |
