@@ -143,7 +143,7 @@ class FileMakerHook(BaseHook):
         if self.auth_client is None and self.host and self.username and self.password:
             self.log.info("Initializing auth client")
             self.auth_client = FileMakerCloudAuth(host=self.host, username=self.username, password=self.password)
-            
+
         if self.auth_client is not None:
             token = self.auth_client.get_token()
             # Add debugging

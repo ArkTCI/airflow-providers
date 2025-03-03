@@ -50,10 +50,25 @@ class TestFileMakerIntegration(unittest.TestCase):
     def test_authentication(self):
         """Test authentication with FileMaker Cloud."""
         try:
+            print("\nAttempting authentication with FileMaker Cloud...")
+            print(f"Host: {self.host}")
+            print(f"Username: {self.username}")
+            print(f"Password length: {len(self.password) if self.password else 0}")
+
+            # Get the hook's auth client directly
+            auth_client = self.hook.get_conn()["auth"]
+            print(f"Auth client region: {auth_client.region}")
+            print(f"Auth client user pool ID: {auth_client.user_pool_id}")
+            print(f"Auth client client ID: {auth_client.client_id}")
+
+            # Now try to get the token
             token = self.hook.get_token()
+            print(f"Token received: {'Yes' if token else 'No'}")
+            print(f"Token length: {len(token) if token else 0}")
+
             self.assertIsNotNone(token)
             self.assertTrue(len(token) > 0)
-            print(f"\nAuthentication successful. Token prefix: {token[:20]}...")
+            print(f"\nAuthentication successful. Token prefix: {token[:20] if token else 'N/A'}...")
         except Exception as e:
             self.fail(f"Authentication failed with error: {str(e)}")
 

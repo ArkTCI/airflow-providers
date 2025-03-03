@@ -63,7 +63,7 @@ class FileMakerCloudAuth:
             "aws_access_key_id": "",
             "aws_secret_access_key": "",
         }
-        
+
         self.cognito = Cognito(
             user_pool_id=self.user_pool_id,
             client_id=self.client_id,
@@ -114,7 +114,7 @@ class FileMakerCloudAuth:
             if not self.password:
                 self.log.error("Password is empty or None")
                 return ""
-                
+
             self._cognito_client.authenticate(password=self.password)
             self.log.debug("Authentication successful")
 
@@ -123,7 +123,7 @@ class FileMakerCloudAuth:
             if not token:
                 self.log.error("Authentication succeeded but no token was returned")
                 return ""
-                
+
             self.log.debug(f"Received token of length: {len(token)}")
 
             # Cache the token
