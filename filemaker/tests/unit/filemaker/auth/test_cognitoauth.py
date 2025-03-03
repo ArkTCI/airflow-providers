@@ -10,7 +10,6 @@ from airflow.providers.filemaker.auth.cognitoauth import FileMakerCloudAuth
 # Try the installed package path first, fall back to direct path for development
 
 
-
 class TestFileMakerCloudAuth(unittest.TestCase):
     """Test class for FileMakerCloudAuth."""
 
