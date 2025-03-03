@@ -3,7 +3,7 @@ FileMaker Cloud OData Hook for interacting with FileMaker Cloud.
 """
 
 import json
-from typing import Any, Dict, Optional, Union
+from typing import Any, Dict, Optional
 
 import boto3
 import requests
@@ -238,10 +238,6 @@ class FileMakerHook(BaseHook):
         Returns:
             Dict[str, str]: User pool information
         """
-        # Fix the response and error_code variables
-        response_status = 200  # Default value
-        error_code = 0  # Default value
-
         # Use fixed Cognito credentials specific to FileMaker Cloud
         pool_info = {
             "Region": "us-west-2",
@@ -254,10 +250,6 @@ class FileMakerHook(BaseHook):
             f"UserPool_ID={pool_info.get('UserPool_ID')}, "
             f"Client_ID={pool_info.get('Client_ID')[:5]}..."
         )
-
-        # Convert int values to strings
-        status_code_str = str(response_status)
-        error_code_str = str(error_code)
 
         return pool_info
 

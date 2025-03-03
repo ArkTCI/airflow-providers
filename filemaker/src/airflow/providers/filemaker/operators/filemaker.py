@@ -250,7 +250,6 @@ class FileMakerSchemaOperator(BaseOperator):
             Dict[str, Any]: Parsed schema
         """
         import xml.etree.ElementTree as ET
-        from xml.etree.ElementTree import Element
 
         # XML namespaces used in OData metadata
         namespaces = {
