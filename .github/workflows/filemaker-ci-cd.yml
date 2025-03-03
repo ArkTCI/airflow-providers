@@ -1,106 +1,139 @@
-name: FileMaker Provider CI
+name: FileMaker Provider CI/CD
 
 on:
   push:
-    paths:
-      - "filemaker/src/**"
-      - "filemaker/tests/**"
-      - "!filemaker/version.txt"
-    branches:
-      - Dev
-    tags:
-      - 'v*'
   workflow_dispatch:
     inputs:
-      run_full_process:
-        description: 'Run full release process (test, version bump, PR)'
+      run_tests_only:
+        description: 'Run only tests and linting (no release)'
         type: boolean
         default: true
-        required: false
+        required: true
 
 permissions:
-  contents: write
-  packages: write
-  pull-requests: write
+  contents: read
 
 jobs:
+  check-existing-release:
+    name: Check Existing Release
+    runs-on: ubuntu-latest
+    outputs:
+      should_continue: ${{ steps.check_release.outputs.should_continue }}
+      version: ${{ steps.get_version.outputs.version }}
+    steps:
+      - name: Get version from tag
+        id: get_version
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          VERSION=${GITHUB_REF#refs/tags/v}
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Version: $VERSION"
+      
+      - name: Set test-only mode for manual trigger
+        id: get_manual_version
+        if: github.event_name == 'workflow_dispatch'
+        run: |
+          echo "Using workflow dispatch - test only mode"
+          echo "version=test-only" >> $GITHUB_OUTPUT
+      
+      - name: Check if release exists
+        id: check_release
+        run: |
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            # Always continue for manual test runs
+            echo "should_continue=true" >> $GITHUB_OUTPUT
+            echo "Manual test run - continuing with workflow"
+          else
+            VERSION="${{ steps.get_version.outputs.version }}"
+            # Check if a GitHub release already exists for this version
+            RELEASE_EXISTS=$(curl -s -o /dev/null -w "%{http_code}" \
+              -H "Authorization: token ${{ github.token }}" \
+              "https://api.github.com/repos/${{ github.repository }}/releases/tags/v${VERSION}")
+            
+            if [[ "$RELEASE_EXISTS" == "200" ]]; then
+              echo "Release v${VERSION} already exists. Skipping validation."
+              echo "should_continue=false" >> $GITHUB_OUTPUT
+            else
+              echo "No existing release found for v${VERSION}. Continuing with validation."
+              echo "should_continue=true" >> $GITHUB_OUTPUT
+            fi
+          fi
+
   lint:
     name: Lint Code
+    needs: [check-existing-release]
+    if: needs.check-existing-release.outputs.should_continue == 'true'
     uses: ./.github/workflows/filemaker-lint.yml
-    # No inputs needed as we're just using the default behavior
 
   test:
     name: Run Tests
-    needs: [lint]
-    # Run tests on tag push or when manually triggered with full process
-    if: success() && (startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && inputs.run_full_process))
+    needs: [check-existing-release, lint]
+    if: needs.check-existing-release.outputs.should_continue == 'true' && needs.lint.outputs.success == 'true'
     uses: ./.github/workflows/filemaker-test.yml
     with:
       ref: ${{ github.ref }}
 
-  # Run version bump on tag push or manual trigger
-  version-bump:
-    name: Bump Version
-    needs: [test]
-    if: success() && (startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && inputs.run_full_process))
-    uses: ./.github/workflows/filemaker-bump-version.yml
-    with:
-      bump_type: patch
-      ref: ${{ github.ref }}
-
-  # Create a PR for the version bump
-  create-pr:
-    name: Create Pull Request
-    needs: [version-bump]
-    if: success() && needs.version-bump.outputs.new_version != ''
-    uses: ./.github/workflows/filemaker-create-pr.yml
-    with:
-      new_version: ${{ needs.version-bump.outputs.new_version }}
-      branch_name: ${{ needs.version-bump.outputs.branch_name }}
+  # Trigger PyPI publishing workflow for tags
+  notify-publish:
+    name: Notify Publishing Workflow
+    needs: [check-existing-release, lint, test]
+    if: startsWith(github.ref, 'refs/tags/v') && needs.check-existing-release.outputs.should_continue == 'true' && needs.test.outputs.success == 'true' && needs.lint.outputs.success == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger PyPI publish workflow
+        uses: peter-evans/repository-dispatch@v2
+        with:
+          event-type: publish-to-pypi-event
+          client-payload: '{"version": "${{ needs.check-existing-release.outputs.version }}", "tag": "v${{ needs.check-existing-release.outputs.version }}"}'
+      
+      - name: Log notification
+        run: |
+          echo "Notification sent to publish workflow for version ${{ needs.check-existing-release.outputs.version }}"
+          echo "Publishing will be handled by the publish-filemaker-to-pypi.yml workflow"
 
   summary:
-    needs: [lint, test, version-bump, create-pr]
-    if: always()
+    needs: [check-existing-release, lint, test, notify-publish]
+    if: always() && needs.check-existing-release.outputs.should_continue == 'true'
     runs-on: ubuntu-latest
     steps:
       - name: Display Workflow Status
         run: |
-          echo "Event Type: ${{ github.event_name }}"
-          echo "Reference: ${{ github.ref }}"
+          echo "## FileMaker Provider CI/CD Workflow Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          # Event type info
+          echo "**Event Type:** ${{ github.event_name }}" >> $GITHUB_STEP_SUMMARY
           if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
-            echo "Manual Trigger - Full Process: ${{ inputs.run_full_process }}"
+            echo "**Manual Trigger - Test Only Mode**" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "**Tag Push - Version:** ${{ needs.check-existing-release.outputs.version }}" >> $GITHUB_STEP_SUMMARY
           fi
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          # Job status table
+          echo "| Job | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "| --- | ------ |" >> $GITHUB_STEP_SUMMARY
+          echo "| Lint | ${{ needs.lint.result == 'success' && '✅ Passed' || (needs.lint.result == 'skipped' && '⏭️ Skipped' || '❌ Failed') }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Test | ${{ needs.test.result == 'success' && '✅ Passed' || (needs.test.result == 'skipped' && '⏭️ Skipped' || '❌ Failed') }} |" >> $GITHUB_STEP_SUMMARY
+          
+          if [[ "${{ github.event_name }}" != "workflow_dispatch" && startsWith(github.ref, 'refs/tags/v') ]]; then
+            echo "| Notify Publish | ${{ needs.notify-publish.result == 'success' && '✅ Sent' || (needs.notify-publish.result == 'skipped' && '⏭️ Skipped' || '❌ Failed') }} |" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "**Note:** Actual publishing is handled by the publish-filemaker-to-pypi.yml workflow" >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          # Print to console as well
+          echo "Event Type: ${{ github.event_name }}"
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            echo "Manual Trigger - Test Only Mode"
+          else
+            echo "Tag Push - Version: ${{ needs.check-existing-release.outputs.version }}"
+          fi
+          
           echo "Lint Status: ${{ needs.lint.result }}"
           echo "Test Status: ${{ needs.test.result }}"
-          echo "Version Bump Status: ${{ needs.version-bump.result || 'Not Run' }}"
-          echo "PR Creation Status: ${{ needs.create-pr.result || 'Not Run' }}"
           
-          if [[ "${{ needs.lint.result }}" == "success" ]]; then
-            echo "✅ Linting passed successfully"
-          else
-            echo "❌ Linting failed"
-          fi
-          
-          if [[ "${{ needs.test.result }}" == "success" ]]; then
-            echo "✅ Tests passed successfully"
-          elif [[ "${{ needs.test.result }}" == "skipped" ]]; then
-            echo "⏭️ Tests were skipped (not a release process)"
-          else
-            echo "❌ Tests failed"
-          fi
-          
-          if [[ "${{ needs.version-bump.result || 'skipped' }}" == "success" ]]; then
-            echo "✅ Version bump completed successfully"
-          elif [[ "${{ needs.version-bump.result || 'skipped' }}" == "skipped" ]]; then
-            echo "⏭️ Version bump was skipped (not a release process)"
-          else
-            echo "❌ Version bump failed"
-          fi
-          
-          if [[ "${{ needs.create-pr.result || 'skipped' }}" == "success" ]]; then
-            echo "✅ Pull request created successfully"
-          elif [[ "${{ needs.create-pr.result || 'skipped' }}" == "skipped" ]]; then
-            echo "⏭️ Pull request creation was skipped"
-          else
-            echo "❌ Pull request creation failed"
+          if [[ "${{ github.event_name }}" != "workflow_dispatch" && startsWith(github.ref, 'refs/tags/v') ]]; then
+            echo "Notify Publish Status: ${{ needs.notify-publish.result }}"
+            echo "Note: Actual publishing is handled by the publish-filemaker-to-pypi.yml workflow"
           fi 
