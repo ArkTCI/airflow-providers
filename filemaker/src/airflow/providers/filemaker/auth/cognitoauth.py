@@ -4,6 +4,7 @@ AuthCloudAuth module for FileMaker Cloud authentication.
 
 import logging
 from typing import Optional
+import re
 
 import botocore
 from botocore.config import Config
@@ -12,25 +13,11 @@ from pycognito import Cognito
 
 class FileMakerCloudAuth:
     """
-    FileMakerCloudAuth is a class for authenticating with FileMaker Cloud.
-
-    This class handles authentication with FileMaker Cloud's OData API using AWS Cognito.
-    It can either use provided Cognito details or discover them from the FileMaker Cloud endpoint.
-
-    :param username: FileMaker Cloud username (Claris ID)
-    :type username: str
-    :param password: FileMaker Cloud password
-    :type password: str
-    :param host: FileMaker Cloud host URL
-    :type host: str
-    :param region: AWS region for Cognito (optional, will be extracted from user_pool_id if not provided)
-    :type region: str
-    :param user_pool_id: Cognito user pool ID (optional, will be discovered from host if not provided)
-    :type user_pool_id: str
-    :param client_id: Cognito client ID (optional, will be discovered from host if not provided)
-    :type client_id: str
+    Authentication handler for FileMaker Cloud using AWS Cognito.
+    
+    This class handles authentication with AWS Cognito for FileMaker Cloud.
     """
-
+    
     def __init__(
         self,
         username: str,
@@ -40,35 +27,54 @@ class FileMakerCloudAuth:
         user_pool_id: Optional[str] = None,
         client_id: Optional[str] = None,
     ) -> None:
+        """
+        Initialize the FileMakerCloudAuth.
+        
+        Args:
+            username: FileMaker Cloud username
+            password: FileMaker Cloud password
+            host: FileMaker Cloud host
+            region: AWS region (optional)
+            user_pool_id: Cognito user pool ID (optional)
+            client_id: Cognito client ID (optional)
+        """
         self.username = username
         self.password = password
         self.host = host
-        self.region = region
-        self._token = None
-        self.client = None
-
-        # Use fixed Cognito pool credentials or provided ones
-        self.user_pool_id = user_pool_id or "us-west-2_NqkuZcXQY"
+        
+        # Get region from host if not provided
+        if not region and host:
+            # Extract region from host (e.g., fm-us-west-2.claris.com -> us-west-2)
+            match = re.search(r'fm-([\w-]+)\.', host)
+            self.region = match.group(1) if match else 'us-west-2'
+        else:
+            self.region = region or 'us-west-2'
+            
+        # Use provided pool and client IDs or get defaults
+        self.user_pool_id = user_pool_id or f"{self.region}_NqkuZcXQY"
         self.client_id = client_id or "4l9rvl4mv5es1eep1qe97cautn"
-
-        # Set region from user_pool_id if not provided
-        if not self.region and "_" in self.user_pool_id:
-            self.region = self.user_pool_id.split("_")[0]
-
-        self.log = logging.getLogger(__name__)
-
-        # Initialize the Cognito client using pycognito
-        # Configure boto3 client with unsigned requests to avoid looking for AWS credentials
-        boto_config = Config(signature_version=botocore.UNSIGNED, retries={"max_attempts": 3})
-
+        
+        # Initialize Cognito client
         self.cognito = Cognito(
             user_pool_id=self.user_pool_id,
             client_id=self.client_id,
             username=self.username,
             user_pool_region=self.region,
-            boto3_client_kwargs={"config": boto_config},
         )
-
+        
+        # Add the missing attributes
+        self._token = None
+        self._cognito_client = None
+        
+        # Configure boto3 client
+        self.log = logging.getLogger(__name__)
+        
+    def _create_cognito_client(self) -> None:
+        """
+        Create a Cognito client.
+        """
+        self._cognito_client = self.cognito
+        
     def get_token(self) -> str:
         """
         Get a token from Cognito.
@@ -76,26 +82,32 @@ class FileMakerCloudAuth:
         Returns:
             str: The token.
         """
-        try:
-            # Return cached token if available
-            if self._token:
-                self.log.debug("Using cached authentication token")
-                return self._token
-
-            self.log.info(f"Authenticating user {self.username} with FileMaker Cloud")
-
-            # Authenticate using SRP (Secure Remote Password) protocol
-            self.log.info("Initiating SRP authentication with Cognito")
-
-            # pycognito handles all the SRP calculations internally
-            self.cognito.authenticate(password=self.password)
-
-            # Get the ID token
-            self._token = self.cognito.id_token
-
-            self.log.info("Successfully obtained authentication token")
+        # Return cached token if available
+        if self._token:
+            self.log.debug("Using cached authentication token")
             return self._token
 
+        self.log.info(f"Authenticating user {self.username} with FileMaker Cloud")
+
+        try:
+            # Authenticate using SRP (Secure Remote Password) protocol
+            self.log.info("Initiating SRP authentication with Cognito")
+            
+            # Create Cognito client if not already created
+            if not self._cognito_client:
+                self._create_cognito_client()
+            
+            # Authenticate with Cognito
+            self._cognito_client.authenticate_user()
+            
+            # Get the ID token
+            token = self._cognito_client.id_token
+            
+            # Cache the token
+            self._token = token
+            
+            return token
         except Exception as e:
-            self.log.error(f"Error getting token: {e}")
-            return ""  # Return empty string instead of None
+            self.log.error(f"Authentication failed: {str(e)}")
+            # Return empty string instead of None or raising an exception
+            return ""

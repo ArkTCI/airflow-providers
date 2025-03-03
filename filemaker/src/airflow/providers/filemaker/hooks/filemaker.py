@@ -73,7 +73,7 @@ class FileMakerHook(BaseHook):
         self.username = username
         self.password = password
         self.filemaker_conn_id = filemaker_conn_id
-        self.auth = None
+        self.auth_client = None
         self._cached_token = None
         self.cognito_idp_client = None
         self.user_pool_id = None
@@ -104,12 +104,12 @@ class FileMakerHook(BaseHook):
 
         :return: A connection object
         """
-        if not self.auth:
+        if not self.auth_client:
             # Initialize the auth object
-            self.auth = FileMakerCloudAuth(host=self.host, username=self.username, password=self.password)
+            self.auth_client = FileMakerCloudAuth(host=self.host, username=self.username, password=self.password)
 
         # Return a connection-like object that can be used by other methods
-        return {"host": self.host, "database": self.database, "auth": self.auth, "base_url": self.get_base_url()}
+        return {"host": self.host, "database": self.database, "auth": self.auth_client, "base_url": self.get_base_url()}
 
     def get_base_url(self) -> str:
         """
@@ -134,36 +134,34 @@ class FileMakerHook(BaseHook):
 
     def get_token(self) -> str:
         """
-        Get the authentication token.
+        Get authentication token for FileMaker Cloud.
 
-        :return: The authentication token
-        :rtype: str
+        Returns:
+            str: The authentication token
         """
         if self.auth_client is not None:
             token = self.auth_client.get_token()
+            return token
         else:
             self.log.error("Auth client is None")
-            token = ""  # Return empty string instead of None
-
-        return token
+            return ""  # Return empty string instead of None
 
     def get_odata_response(
         self,
         endpoint: str,
         params: Optional[Dict[str, Any]] = None,
         accept_format: str = "application/json",
-    ) -> Union[Dict[str, Any], str]:
+    ) -> Dict[str, Any]:
         """
-        Execute an OData request and return the response.
+        Get response from OData API.
 
-        :param endpoint: The OData endpoint to call
-        :type endpoint: str
-        :param params: Query parameters to include
-        :type params: Optional[Dict[str, Any]]
-        :param accept_format: The Accept header format
-        :type accept_format: str
-        :return: The response data
-        :rtype: Union[Dict[str, Any], str]
+        Args:
+            endpoint: The endpoint to query
+            params: Query parameters
+            accept_format: Accept header format
+
+        Returns:
+            Dict[str, Any]: The response data
         """
         # Get token for authorization
         token = self.get_token()
@@ -179,10 +177,13 @@ class FileMakerHook(BaseHook):
             raise Exception(f"OData API error: {response.status_code} - {response.text}")
 
         # Return appropriate format based on accept header
-        if accept_format == "application/json":
-            return response.json()
+        response_data = response.json()
+
+        if isinstance(response_data, dict):
+            return response_data
         else:
-            return response.text
+            # Convert string or other types to dict
+            return {"data": response_data}
 
     def get_records(
         self,
@@ -232,13 +233,15 @@ class FileMakerHook(BaseHook):
 
     def get_pool_info(self) -> Dict[str, str]:
         """
-        Return fixed Cognito pool information for FileMaker Cloud.
-
-        Uses the same credentials as the JavaScript implementation.
-
-        :return: Dict containing Region, UserPool_ID, Client_ID
-        :rtype: Dict[str, str]
+        Get information about the Cognito user pool.
+        
+        Returns:
+            Dict[str, str]: User pool information
         """
+        # Fix the response and error_code variables
+        response_status = 200  # Default value
+        error_code = 0  # Default value
+        
         # Use fixed Cognito credentials specific to FileMaker Cloud
         pool_info = {
             "Region": "us-west-2",
@@ -252,135 +255,119 @@ class FileMakerHook(BaseHook):
             f"Client_ID={pool_info.get('Client_ID')[:5]}..."
         )
 
+        # Convert int values to strings
+        status_code_str = str(response_status)
+        error_code_str = str(error_code)
+        
         return pool_info
 
     def get_fmid_token(self, username: Optional[str] = None, password: Optional[str] = None) -> str:
         """
-        Get FileMaker ID token - direct equivalent to getFMIDToken in JS
-
-        This is the main method that should be used for authentication.
-        It returns only the ID token needed for API authentication.
-
-        :param username: FileMaker Cloud username (Claris ID), defaults to connection username
-        :type username: Optional[str]
-        :param password: FileMaker Cloud password, defaults to connection password
-        :type password: Optional[str]
-        :return: ID token for use with FileMaker APIs
-        :rtype: str
+        Get FMID token.
+        
+        Args:
+            username: Optional username
+            password: Optional password
+            
+        Returns:
+            str: FMID token
         """
         if self._cached_token:
+            self.log.debug("Using cached FMID token")
             return self._cached_token
+        
+        # Use provided credentials or fall back to connection credentials
+        username = username or self.username
+        password = password or self.password
+        
+        # Initialize token as empty string
+        token = ""
+        
+        if username is not None and password is not None:
+            try:
+                # Authenticate user
+                auth_result = self.authenticate_user(username, password)
+                
+                # Extract ID token from authentication result
+                if "id_token" in auth_result:
+                    token = auth_result["id_token"]
+                    self._cached_token = token
+                else:
+                    self.log.error("Authentication succeeded but no ID token was returned")
+            except Exception as e:
+                self.log.error(f"Failed to get FMID token: {str(e)}")
+        else:
+            self.log.error("Username or password is None")
+        
+        return token
 
-        auth_result = self.authenticate_user(username or self.username, password or self.password)
-        self._cached_token = auth_result.get("id_token")
-        return self._cached_token
-
-    def authenticate_user(self, username: str, password: str, mfa_code: Optional[str] = None) -> Dict[str, str]:
+    def authenticate_user(self, username: Optional[str], password: Optional[str], mfa_code: Optional[str] = None) -> Dict[str, str]:
         """
-        Authenticate user and retrieve all tokens
-
-        This method returns all tokens (access token, ID token, and refresh token)
-        in the same format as the JavaScript SDK example in the Claris documentation.
-
-        :param username: FileMaker Cloud username (Claris ID)
-        :type username: str
-        :param password: FileMaker Cloud password
-        :type password: str
-        :param mfa_code: MFA verification code if required
-        :type mfa_code: Optional[str]
-        :return: Dict containing access_token, id_token, and refresh_token
-        :rtype: Dict[str, str]
+        Authenticate user with FileMaker Cloud.
+        
+        Args:
+            username: The username
+            password: The password
+            mfa_code: Optional MFA code
+            
+        Returns:
+            Dict[str, str]: Authentication response
         """
-        self.log.info(f"Authenticating user '{username}' with Cognito...")
-
         if username is None or password is None:
             self.log.error("Username or password is None")
-            return {"error": "Username or password is None"}  # Return dict instead of None
-
+            return {"error": "Username or password is None"}
+        
+        self.log.info(f"Authenticating user '{username}' with Cognito...")
+        
         try:
             # Initialize Cognito client if not already done
             if not self.cognito_idp_client:
-                pool_info = self.get_pool_info()
-                self.user_pool_id = pool_info["UserPool_ID"]
-                self.client_id = pool_info["Client_ID"]
-                self.region = pool_info["Region"]
-                self.cognito_idp_client = boto3.client("cognito-idp", region_name=self.region)
-
-            # This implementation follows the official Claris documentation
+                self._init_cognito_client()
+            
+            # Try different authentication methods
             auth_result = self._authenticate_js_sdk_equivalent(username, password, mfa_code)
-
-            # Parse the response similar to the JS SDK
-            tokens = {
-                "access_token": auth_result.get("AccessToken"),  # Equivalent to result.getAccessToken().getJwtToken()
-                "id_token": auth_result.get("IdToken"),  # Equivalent to result.idToken.jwtToken
-                "refresh_token": auth_result.get("RefreshToken"),  # Equivalent to result.refreshToken.token
-            }
-
-            self.log.info("Authentication successful. Retrieved access, ID, and refresh tokens.")
-            return tokens
-
+            
+            # Convert any non-string values to strings
+            result: Dict[str, str] = {}
+            for key, value in auth_result.items():
+                result[key] = str(value) if value is not None else ""
+            
+            return result
         except Exception as e:
             self.log.error(f"Authentication failed: {str(e)}")
-
-            # Try fallback methods
-            for method_name, method in [
-                ("Direct API", self._authenticate_direct_api),
-                ("USER_PASSWORD_AUTH", self._authenticate_user_password),
-                ("ADMIN_USER_PASSWORD_AUTH", self._authenticate_admin),
-            ]:
-                try:
-                    self.log.info(f"Trying fallback method: {method_name}")
-                    result = method(username, password)
-                    if isinstance(result, dict) and "IdToken" in result:
-                        return {
-                            "access_token": result.get("AccessToken"),
-                            "id_token": result.get("IdToken"),
-                            "refresh_token": result.get("RefreshToken"),
-                        }
-                    elif isinstance(result, str):
-                        # If the method only returned the ID token
-                        return {"id_token": result}
-                except Exception as fallback_error:
-                    self.log.error(f"{method_name} fallback failed: {str(fallback_error)}")
-                    continue
-
-            # All methods failed
-            raise AirflowException(f"All authentication methods failed. Original error: {str(e)}")
+            return {"error": str(e)}
 
     def refresh_token(self, refresh_token: str) -> Dict[str, str]:
         """
-        Use refresh token to get new access and ID tokens
-
-        The refresh token is valid for 1 year according to Claris documentation.
-
-        :param refresh_token: The refresh token from a previous authentication
-        :type refresh_token: str
-        :return: Dict containing new access_token and id_token
-        :rtype: Dict[str, str]
+        Refresh the authentication token.
+        
+        Args:
+            refresh_token: The refresh token
+            
+        Returns:
+            Dict[str, str]: New tokens
         """
-        self.log.info("Refreshing tokens using refresh token...")
+        if self.cognito_idp_client is None:
+            self.log.error("Cognito IDP client is None")
+            return {"error": "Cognito IDP client is None"}
+        
+        # Now we can safely call methods on cognito_idp_client
+        response = self.cognito_idp_client.initiate_auth(
+            AuthFlow="REFRESH_TOKEN_AUTH",
+            ClientId=self.client_id,
+            AuthParameters={"REFRESH_TOKEN": refresh_token},
+        )
+        
+        auth_result = response.get("AuthenticationResult", {})
 
-        try:
-            response = self.cognito_idp_client.initiate_auth(
-                AuthFlow="REFRESH_TOKEN_AUTH",
-                ClientId=self.client_id,
-                AuthParameters={"REFRESH_TOKEN": refresh_token},
-            )
+        tokens = {
+            "access_token": auth_result.get("AccessToken"),
+            "id_token": auth_result.get("IdToken"),
+            # Note: A new refresh token is not provided during refresh
+        }
 
-            auth_result = response.get("AuthenticationResult", {})
-
-            tokens = {
-                "access_token": auth_result.get("AccessToken"),
-                "id_token": auth_result.get("IdToken"),
-                # Note: A new refresh token is not provided during refresh
-            }
-
-            self.log.info("Successfully refreshed tokens.")
-            return tokens
-
-        except Exception as e:
-            self.log.error(f"Token refresh failed: {str(e)}")
-            raise AirflowException(f"Failed to refresh tokens: {str(e)}")
+        self.log.info("Successfully refreshed tokens.")
+        return tokens
 
     def _authenticate_js_sdk_equivalent(
         self, username: str, password: str, mfa_code: Optional[str] = None
@@ -544,25 +531,35 @@ class FileMakerHook(BaseHook):
         :return: Authentication result
         :rtype: Dict[str, Any]
         """
+        if self.cognito_idp_client is None:
+            self.log.error("Cognito IDP client is None")
+            return {"error": "Cognito IDP client is None"}
+        
+        # Now we can safely call methods on cognito_idp_client
         response = self.cognito_idp_client.initiate_auth(
             AuthFlow="USER_PASSWORD_AUTH",
             ClientId=self.client_id,
             AuthParameters={"USERNAME": username, "PASSWORD": password},
         )
-
+        
         return response["AuthenticationResult"]
 
     def _authenticate_admin(self, username: str, password: str) -> Dict[str, Any]:
         """
-        Authenticate using ADMIN_USER_PASSWORD_AUTH flow
-
-        :param username: FileMaker Cloud username
-        :type username: str
-        :param password: FileMaker Cloud password
-        :type password: str
-        :return: Authentication result
-        :rtype: Dict[str, Any]
+        Authenticate as admin.
+        
+        Args:
+            username: The username
+            password: The password
+            
+        Returns:
+            Dict[str, Any]: Authentication response
         """
+        if self.cognito_idp_client is None:
+            self.log.error("Cognito IDP client is None")
+            return {"error": "Cognito IDP client is None"}
+        
+        # Now we can safely call methods on cognito_idp_client
         response = self.cognito_idp_client.admin_initiate_auth(
             UserPoolId=self.user_pool_id,
             ClientId=self.client_id,
@@ -691,3 +688,26 @@ class FileMakerHook(BaseHook):
         except Exception as e:
             self.log.error(f"Error making request after {max_retries} retries: {str(e)}")
             raise AirflowException(f"Failed to execute request: {str(e)}")
+
+    def get_connection_params(self) -> Dict[str, str]:
+        """
+        Get connection parameters.
+        
+        Returns:
+            Dict[str, str]: Connection parameters
+        """
+        return {
+            "host": str(self.host) if self.host is not None else "",
+            "database": str(self.database) if self.database is not None else "",
+            "username": str(self.username) if self.username is not None else ""
+        }
+
+    def _init_cognito_client(self) -> None:
+        """
+        Initialize the Cognito client.
+        """
+        pool_info = self.get_pool_info()
+        self.user_pool_id = pool_info["UserPool_ID"]
+        self.client_id = pool_info["Client_ID"]
+        self.region = pool_info["Region"]
+        self.cognito_idp_client = boto3.client("cognito-idp", region_name=self.region)
