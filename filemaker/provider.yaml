@@ -14,18 +14,42 @@
 # KIND, either express or implied.  See the License for the
 # specific language governing permissions and limitations
 # under the License.
+
+---
 package-name: arktci-airflow-provider-filemaker
 name: FileMaker Cloud
 description: |
   Provider for FileMaker Cloud OData API integration, including custom Cognito authentication.
+
 state: ready
+source-date-epoch: 1718476800
+# note that those versions are maintained by release manager - do not update them manually
 versions:
-  - 1.2.3  - 1.2.2  
-  - 1.2.1
-  - 1.2.0
-  - 1.1.6
-  - 1.1.5
-  - 1.1.4
   - 1.1.2
+  - 1.1.1
+  - 1.1.0
 dependencies:
-  - apache-airflow>=2.9.0 
+  - apache-airflow>=2.0.0
+  - boto3>=1.16.0 
+  - requests>=2.25.0
+  - pandas>=1.0.0
+  - pycognito>=2023.01.0
+
+integrations:
+  - integration-name: FileMaker Cloud
+    external-doc-url: https://claris.com/filemaker/cloud/
+    tags: [service]
+
+operators:
+  - integration-name: FileMaker Cloud
+    python-modules:
+      - airflow.providers.filemaker.operators.filemaker
+
+hooks:
+  - integration-name: FileMaker Cloud
+    python-modules:
+      - airflow.providers.filemaker.hooks.filemaker
+
+connection-types:
+  - hook-class-name: airflow.providers.filemaker.hooks.filemaker.FileMakerHook
+    connection-type: filemaker 
