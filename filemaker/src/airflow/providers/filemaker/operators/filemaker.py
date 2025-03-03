@@ -242,10 +242,10 @@ class FileMakerSchemaOperator(BaseOperator):
     def _parse_xml_schema(self, xml_content: str) -> Dict[str, Any]:
         """
         Parse XML schema content.
-        
+
         Args:
             xml_content: The XML content to parse
-            
+
         Returns:
             Dict[str, Any]: Parsed schema
         """
@@ -275,17 +275,14 @@ class FileMakerSchemaOperator(BaseOperator):
                 for property_elem in entity_type.findall("./edm:Property", namespaces):
                     prop_name = property_elem.get("Name", "")  # Default to empty string if None
                     prop_type = property_elem.get("Type", "")  # Default to empty string if None
-                    
+
                     # Now prop_name and prop_type are guaranteed to be strings
                     if prop_name.startswith("@"):
                         # Handle special properties
                         pass
-                    
+
                     # Add property to the list
-                    properties.append({
-                        "name": prop_name,
-                        "type": prop_type
-                    })
+                    properties.append({"name": prop_name, "type": prop_type})
 
                 # Find keys
                 key_props = []

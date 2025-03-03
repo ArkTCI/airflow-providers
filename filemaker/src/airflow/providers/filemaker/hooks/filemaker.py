@@ -234,14 +234,14 @@ class FileMakerHook(BaseHook):
     def get_pool_info(self) -> Dict[str, str]:
         """
         Get information about the Cognito user pool.
-        
+
         Returns:
             Dict[str, str]: User pool information
         """
         # Fix the response and error_code variables
         response_status = 200  # Default value
         error_code = 0  # Default value
-        
+
         # Use fixed Cognito credentials specific to FileMaker Cloud
         pool_info = {
             "Region": "us-west-2",
@@ -258,36 +258,36 @@ class FileMakerHook(BaseHook):
         # Convert int values to strings
         status_code_str = str(response_status)
         error_code_str = str(error_code)
-        
+
         return pool_info
 
     def get_fmid_token(self, username: Optional[str] = None, password: Optional[str] = None) -> str:
         """
         Get FMID token.
-        
+
         Args:
             username: Optional username
             password: Optional password
-            
+
         Returns:
             str: FMID token
         """
         if self._cached_token:
             self.log.debug("Using cached FMID token")
             return self._cached_token
-        
+
         # Use provided credentials or fall back to connection credentials
         username = username or self.username
         password = password or self.password
-        
+
         # Initialize token as empty string
         token = ""
-        
+
         if username is not None and password is not None:
             try:
                 # Authenticate user
                 auth_result = self.authenticate_user(username, password)
-                
+
                 # Extract ID token from authentication result
                 if "id_token" in auth_result:
                     token = auth_result["id_token"]
@@ -298,40 +298,42 @@ class FileMakerHook(BaseHook):
                 self.log.error(f"Failed to get FMID token: {str(e)}")
         else:
             self.log.error("Username or password is None")
-        
+
         return token
 
-    def authenticate_user(self, username: Optional[str], password: Optional[str], mfa_code: Optional[str] = None) -> Dict[str, str]:
+    def authenticate_user(
+        self, username: Optional[str], password: Optional[str], mfa_code: Optional[str] = None
+    ) -> Dict[str, str]:
         """
         Authenticate user with FileMaker Cloud.
-        
+
         Args:
             username: The username
             password: The password
             mfa_code: Optional MFA code
-            
+
         Returns:
             Dict[str, str]: Authentication response
         """
         if username is None or password is None:
             self.log.error("Username or password is None")
             return {"error": "Username or password is None"}
-        
+
         self.log.info(f"Authenticating user '{username}' with Cognito...")
-        
+
         try:
             # Initialize Cognito client if not already done
             if not self.cognito_idp_client:
                 self._init_cognito_client()
-            
+
             # Try different authentication methods
             auth_result = self._authenticate_js_sdk_equivalent(username, password, mfa_code)
-            
+
             # Convert any non-string values to strings
             result: Dict[str, str] = {}
             for key, value in auth_result.items():
                 result[key] = str(value) if value is not None else ""
-            
+
             return result
         except Exception as e:
             self.log.error(f"Authentication failed: {str(e)}")
@@ -340,24 +342,24 @@ class FileMakerHook(BaseHook):
     def refresh_token(self, refresh_token: str) -> Dict[str, str]:
         """
         Refresh the authentication token.
-        
+
         Args:
             refresh_token: The refresh token
-            
+
         Returns:
             Dict[str, str]: New tokens
         """
         if self.cognito_idp_client is None:
             self.log.error("Cognito IDP client is None")
             return {"error": "Cognito IDP client is None"}
-        
+
         # Now we can safely call methods on cognito_idp_client
         response = self.cognito_idp_client.initiate_auth(
             AuthFlow="REFRESH_TOKEN_AUTH",
             ClientId=self.client_id,
             AuthParameters={"REFRESH_TOKEN": refresh_token},
         )
-        
+
         auth_result = response.get("AuthenticationResult", {})
 
         tokens = {
@@ -534,31 +536,31 @@ class FileMakerHook(BaseHook):
         if self.cognito_idp_client is None:
             self.log.error("Cognito IDP client is None")
             return {"error": "Cognito IDP client is None"}
-        
+
         # Now we can safely call methods on cognito_idp_client
         response = self.cognito_idp_client.initiate_auth(
             AuthFlow="USER_PASSWORD_AUTH",
             ClientId=self.client_id,
             AuthParameters={"USERNAME": username, "PASSWORD": password},
         )
-        
+
         return response["AuthenticationResult"]
 
     def _authenticate_admin(self, username: str, password: str) -> Dict[str, Any]:
         """
         Authenticate as admin.
-        
+
         Args:
             username: The username
             password: The password
-            
+
         Returns:
             Dict[str, Any]: Authentication response
         """
         if self.cognito_idp_client is None:
             self.log.error("Cognito IDP client is None")
             return {"error": "Cognito IDP client is None"}
-        
+
         # Now we can safely call methods on cognito_idp_client
         response = self.cognito_idp_client.admin_initiate_auth(
             UserPoolId=self.user_pool_id,
@@ -692,14 +694,14 @@ class FileMakerHook(BaseHook):
     def get_connection_params(self) -> Dict[str, str]:
         """
         Get connection parameters.
-        
+
         Returns:
             Dict[str, str]: Connection parameters
         """
         return {
             "host": str(self.host) if self.host is not None else "",
             "database": str(self.database) if self.database is not None else "",
-            "username": str(self.username) if self.username is not None else ""
+            "username": str(self.username) if self.username is not None else "",
         }
 
     def _init_cognito_client(self) -> None:
