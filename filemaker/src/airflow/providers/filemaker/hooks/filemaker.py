@@ -3,7 +3,9 @@ FileMaker Cloud OData Hook for interacting with FileMaker Cloud.
 """
 
 import json
-from typing import Any, Dict, Optional
+import warnings
+from typing import Any, Dict, List, Optional
+from urllib.parse import urlencode
 
 import boto3
 import requests
@@ -12,6 +14,9 @@ from airflow.hooks.base import BaseHook
 
 # Import the auth module
 from airflow.providers.filemaker.auth.cognitoauth import FileMakerCloudAuth
+
+# Maximum recommended URL length according to FileMaker OData guidelines
+MAX_URL_LENGTH = 2000
 
 
 class FileMakerHook(BaseHook):
@@ -145,12 +150,6 @@ class FileMakerHook(BaseHook):
         Returns:
             str: The authentication token
         """
-        # For test environments, simply return a test token
-        import sys
-
-        if "pytest" in sys.modules:
-            return "test-token"
-
         # Initialize auth_client if it's None but we have credentials
         if self.auth_client is None and self.host and self.username and self.password:
             self.log.info("Initializing auth client")
@@ -176,15 +175,16 @@ class FileMakerHook(BaseHook):
         accept_format: str = "application/json",
     ) -> Dict[str, Any]:
         """
-        Get response from OData API.
+        Get OData response from the FileMaker API.
 
-        Args:
-            endpoint: The endpoint to query
-            params: Query parameters
-            accept_format: Accept header format
-
-        Returns:
-            Dict[str, Any]: The response data
+        :param endpoint: The API endpoint
+        :type endpoint: str
+        :param params: Query parameters
+        :type params: Optional[Dict[str, Any]]
+        :param accept_format: Accept header format
+        :type accept_format: str
+        :return: The parsed API response
+        :rtype: Dict[str, Any]
         """
         # Get token for authorization
         token = self.get_token()
@@ -192,31 +192,28 @@ class FileMakerHook(BaseHook):
         # Prepare headers
         headers = {"Authorization": f"FMID {token}", "Accept": accept_format}
 
+        # Validate URL length
+        self.validate_url_length(endpoint, params)
+
         # Execute request
         self.log.info(f"Making request to: {endpoint}")
         response = requests.get(endpoint, headers=headers, params=params)
 
-        # Check response
+        # Check for errors
         if response.status_code >= 400:
-            raise Exception(f"OData API error: {response.status_code} - {response.text}")
+            self.log.error(f"OData API error: {response.status_code} - {response.text}")
+            raise AirflowException(f"OData API error: {response.status_code} - {response.text}")
 
-        # Return appropriate format based on accept header
-        if accept_format == "application/xml" or "xml" in response.headers.get("Content-Type", ""):
+        # Parse response
+        if accept_format == "application/json":
+            self.log.info("Parsing JSON response")
+            return response.json()
+        elif "xml" in accept_format:
             self.log.info("Received XML response")
-            return {"data": response.text}
+            return response.text
         else:
-            try:
-                self.log.info("Parsing JSON response")
-                response_data = response.json()
-                if isinstance(response_data, dict):
-                    return response_data
-                else:
-                    # Convert string or other types to dict
-                    return {"data": response_data}
-            except Exception as e:
-                self.log.error(f"Error parsing response as JSON: {str(e)}")
-                # Return the raw text if JSON parsing fails
-                return {"data": response.text}
+            self.log.info(f"Received response with Content-Type: {response.headers.get('Content-Type')}")
+            return response.text
 
     def get_records(
         self,
@@ -226,6 +223,9 @@ class FileMakerHook(BaseHook):
         top: Optional[int] = None,
         skip: Optional[int] = None,
         orderby: Optional[str] = None,
+        expand: Optional[str] = None,
+        count: bool = False,
+        apply: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
         Fetch records from a FileMaker table using OData query options.
@@ -242,6 +242,12 @@ class FileMakerHook(BaseHook):
         :type skip: Optional[int]
         :param orderby: $orderby parameter - sorting field(s)
         :type orderby: Optional[str]
+        :param expand: $expand parameter - comma-separated list of related entities to expand
+        :type expand: Optional[str]
+        :param count: $count parameter - whether to include the count of entities in the response
+        :type count: bool
+        :param apply: $apply parameter - aggregation transformations to apply to the entities
+        :type apply: Optional[str]
         :return: The query results
         :rtype: Dict[str, Any]
         """
@@ -260,8 +266,196 @@ class FileMakerHook(BaseHook):
             params["$skip"] = skip
         if orderby:
             params["$orderby"] = orderby
+        if expand:
+            params["$expand"] = expand
+        if count:
+            params["$count"] = "true"
+        if apply:
+            params["$apply"] = apply
+
+        # Validate URL length before executing
+        self.validate_url_length(endpoint, params)
 
         # Execute request
+        return self.get_odata_response(endpoint=endpoint, params=params)
+
+    def get_record_by_id(
+        self,
+        table: str,
+        record_id: str,
+        select: Optional[str] = None,
+        expand: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """
+        Get a specific record by ID from a FileMaker table.
+
+        Uses the OData pattern: GET /fmi/odata/v4/{database}/{table}({id})
+
+        :param table: The table name
+        :type table: str
+        :param record_id: The record ID
+        :type record_id: str
+        :param select: $select parameter - comma-separated list of fields
+        :type select: Optional[str]
+        :param expand: $expand parameter - comma-separated list of related entities
+        :type expand: Optional[str]
+        :return: The record data
+        :rtype: Dict[str, Any]
+        """
+        base_url = self.get_base_url()
+        endpoint = f"{base_url}/{table}({record_id})"
+
+        # Build query parameters
+        params = {}
+        if select:
+            params["$select"] = select
+        if expand:
+            params["$expand"] = expand
+
+        # Validate URL length before executing
+        self.validate_url_length(endpoint, params)
+
+        return self.get_odata_response(endpoint=endpoint, params=params)
+
+    def get_field_value(
+        self,
+        table: str,
+        record_id: str,
+        field_name: str,
+    ) -> Any:
+        """
+        Get a specific field value from a record.
+
+        Uses the OData pattern: GET /fmi/odata/v4/{database}/{table}({id})/{fieldName}
+
+        :param table: The table name
+        :type table: str
+        :param record_id: The record ID
+        :type record_id: str
+        :param field_name: The field name
+        :type field_name: str
+        :return: The field value
+        :rtype: Any
+        """
+        base_url = self.get_base_url()
+        endpoint = f"{base_url}/{table}({record_id})/{field_name}"
+
+        # Validate URL length before executing
+        self.validate_url_length(endpoint)
+
+        response = self.get_odata_response(endpoint=endpoint)
+        return response.get("value")
+
+    def get_binary_field_value(
+        self,
+        table: str,
+        record_id: str,
+        field_name: str,
+        accept_format: Optional[str] = None,
+    ) -> bytes:
+        """
+        Get a binary field value from a record (images, attachments, etc.).
+
+        Uses the OData pattern: GET /fmi/odata/v4/{database}/{table}({id})/{binaryFieldName}/$value
+
+        :param table: The table name
+        :type table: str
+        :param record_id: The record ID
+        :type record_id: str
+        :param field_name: The binary field name
+        :type field_name: str
+        :param accept_format: Optional MIME type to request (e.g., 'image/jpeg')
+        :type accept_format: Optional[str]
+        :return: The binary data
+        :rtype: bytes
+        """
+        base_url = self.get_base_url()
+        endpoint = f"{base_url}/{table}({record_id})/{field_name}/$value"
+
+        # Validate URL length before executing
+        self.validate_url_length(endpoint)
+
+        return self.get_binary_field(endpoint, accept_format)
+
+    def get_binary_field(self, endpoint, accept_format=None):
+        """
+        Get binary field value from OData API (images, attachments, etc.)
+
+        :param endpoint: API endpoint for the binary field
+        :param accept_format: Accept header format, default is 'application/octet-stream'
+        :return: Binary content
+        """
+        # Get auth token
+        token = self.get_token()
+
+        # Set up headers with appropriate content type for binary data
+        headers = {
+            "Authorization": f"FMID {token}",
+            "Accept": accept_format or "application/octet-stream",
+        }
+
+        # Validate URL length
+        self.validate_url_length(endpoint)
+
+        # Make the request
+        response = requests.get(endpoint, headers=headers)
+
+        # Check for errors
+        if response.status_code >= 400:
+            raise Exception(f"OData API error retrieving binary field: {response.status_code} - {response.text}")
+
+        # Return the binary content
+        return response.content
+
+    def get_cross_join(
+        self,
+        tables: List[str],
+        select: Optional[str] = None,
+        filter_query: Optional[str] = None,
+        top: Optional[int] = None,
+        skip: Optional[int] = None,
+        orderby: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """
+        Get a cross join of unrelated tables.
+
+        Uses the OData pattern: GET /fmi/odata/v4/{database}/$crossjoin({table1},{table2})
+
+        :param tables: List of tables to join
+        :type tables: List[str]
+        :param select: $select parameter - comma-separated list of fields
+        :type select: Optional[str]
+        :param filter_query: $filter parameter - filtering condition
+        :type filter_query: Optional[str]
+        :param top: $top parameter - maximum number of records to return
+        :type top: Optional[int]
+        :param skip: $skip parameter - number of records to skip
+        :type skip: Optional[int]
+        :param orderby: $orderby parameter - sorting field(s)
+        :type orderby: Optional[str]
+        :return: The query results
+        :rtype: Dict[str, Any]
+        """
+        base_url = self.get_base_url()
+        tables_path = ",".join(tables)
+        endpoint = f"{base_url}/$crossjoin({tables_path})"
+
+        # Build query parameters
+        params = {}
+        if select:
+            params["$select"] = select
+        if filter_query:
+            params["$filter"] = filter_query
+        if top:
+            params["$top"] = top
+        if skip:
+            params["$skip"] = skip
+        if orderby:
+            params["$orderby"] = orderby
+
+        # Validate URL length before executing
+        self.validate_url_length(endpoint, params)
+
         return self.get_odata_response(endpoint=endpoint, params=params)
 
     def get_pool_info(self) -> Dict[str, str]:
@@ -636,69 +830,85 @@ class FileMakerHook(BaseHook):
 
         return response_json.get("AuthenticationResult", {})
 
-    def get_binary_field(self, endpoint, accept_format=None):
+    def _execute_request(self, endpoint, headers=None, method="GET", data=None):
         """
-        Get binary field value from OData API (images, attachments, etc.)
+        Execute a request to the FileMaker Cloud OData API.
 
-        :param endpoint: API endpoint for the binary field
-        :param accept_format: Accept header format, default is 'application/octet-stream'
-        :return: Binary content
+        :param endpoint: The API endpoint
+        :param headers: The HTTP headers (default: None)
+        :param method: The HTTP method (default: GET)
+        :param data: Request body data (default: None)
+        :return: The response from the API
         """
-        # Get auth token
-        token = self.get_token()
+        headers = headers or {}
 
-        # Set up headers with appropriate content type for binary data
-        headers = {
-            "Authorization": f"FMID {token}",
-            "Accept": accept_format or "application/octet-stream",
-        }
+        # Default headers if not provided
+        if "Accept" not in headers:
+            headers["Accept"] = "application/json"
 
-        # Make the request
-        response = requests.get(endpoint, headers=headers)
+        if "Authorization" not in headers and method in ["GET", "POST", "PATCH", "DELETE"]:
+            token = self.get_token()
+            headers["Authorization"] = f"FMID {token}"
+
+        # For POST requests, set Content-Type if not provided
+        if method == "POST" and data and "Content-Type" not in headers:
+            headers["Content-Type"] = "application/json"
+
+        # For PATCH requests, set Content-Type if not provided
+        if method == "PATCH" and data and "Content-Type" not in headers:
+            headers["Content-Type"] = "application/json"
+
+        # Execute the request
+        if method == "GET":
+            response = requests.get(endpoint, headers=headers)
+        elif method == "POST":
+            response = requests.post(endpoint, headers=headers, json=data)
+        elif method == "PATCH":
+            response = requests.patch(endpoint, headers=headers, json=data)
+        elif method == "DELETE":
+            response = requests.delete(endpoint, headers=headers)
+        else:
+            raise ValueError(f"Unsupported HTTP method: {method}")
 
         # Check for errors
         if response.status_code >= 400:
-            raise Exception(f"OData API error retrieving binary field: {response.status_code} - {response.text}")
+            self.log.error(f"OData API error: {response.status_code} - {response.text}")
+            raise AirflowException(f"OData API error: {response.status_code} - {response.text}")
 
-        # Return the binary content
-        return response.content
+        return response
 
-    def _execute_request(self, endpoint, headers=None, method="GET", data=None):
+    def validate_url_length(self, url: str, params: Optional[Dict[str, Any]] = None) -> str:
         """
-        Execute an HTTP request with proper error handling.
+        Validate that a URL with parameters doesn't exceed the recommended length limit.
 
-        :param endpoint: The endpoint URL
-        :type endpoint: str
-        :param headers: HTTP headers
-        :type headers: Dict[str, str]
-        :param method: HTTP method (GET, POST, etc.)
-        :type method: str
-        :param data: Request data for POST/PUT methods
-        :type data: Any
-        :return: Response object or content
-        :rtype: Any
+        According to FileMaker OData guidelines, URLs should be limited to 2,000 characters
+        for optimal cross-platform compatibility.
+
+        :param url: The base URL without query parameters
+        :type url: str
+        :param params: Query parameters dictionary
+        :type params: Optional[Dict[str, Any]]
+        :return: The full URL (for convenience)
+        :rtype: str
+        :raises: UserWarning if URL exceeds recommended length
         """
-        try:
-            if method.upper() == "GET":
-                response = requests.get(endpoint, headers=headers)
-            elif method.upper() == "POST":
-                response = requests.post(endpoint, headers=headers, json=data)
-            elif method.upper() == "PUT":
-                response = requests.put(endpoint, headers=headers, json=data)
-            elif method.upper() == "DELETE":
-                response = requests.delete(endpoint, headers=headers)
-            else:
-                raise ValueError(f"Unsupported HTTP method: {method}")
+        # Estimate full URL length with params
+        params_str = urlencode(params or {})
+        full_url = f"{url}?{params_str}" if params_str else url
 
-            response.raise_for_status()
-            return response
+        if len(full_url) > MAX_URL_LENGTH:
+            warnings.warn(
+                f"Generated URL exceeds FileMaker's recommended {MAX_URL_LENGTH} character limit "
+                f"({len(full_url)} chars). This may cause issues with some browsers or servers. "
+                "Consider using fewer query parameters or shorter values.",
+                UserWarning,
+            )
+            self.log.warning(
+                f"URL length warning: Generated URL length is {len(full_url)} characters, "
+                f"which exceeds the recommended limit of {MAX_URL_LENGTH}."
+            )
 
-        except requests.exceptions.RequestException as e:
-            self.log.error(f"Request error: {str(e)}")
-            raise AirflowException(f"Request failed: {str(e)}")
-        except Exception as e:
-            self.log.error(f"Unexpected error: {str(e)}")
-            raise AirflowException(f"Unexpected error: {str(e)}")
+        return full_url
 
     def _request_with_retry(
         self,
@@ -738,3 +948,274 @@ class FileMakerHook(BaseHook):
         self.client_id = pool_info["Client_ID"]
         self.region = pool_info["Region"]
         self.cognito_idp_client = boto3.client("cognito-idp", region_name=self.region)
+
+    @classmethod
+    def test_connection(cls, conn):
+        """
+        Test the FileMaker connection.
+
+        This method attempts to authenticate with FileMaker Cloud
+        to verify that the connection credentials are valid.
+
+        Args:
+            conn: The connection object to test
+
+        Returns:
+            tuple: (bool, str) - (True, success message) if successful,
+                                 (False, error message) if unsuccessful
+        """
+        if not conn.host:
+            return False, "Missing FileMaker host in connection configuration"
+
+        if not conn.schema:
+            return False, "Missing FileMaker database in connection configuration"
+
+        if not conn.login:
+            return False, "Missing FileMaker username in connection configuration"
+
+        if not conn.password:
+            return False, "Missing FileMaker password in connection configuration"
+
+        try:
+            hook = cls(
+                host=conn.host,
+                database=conn.schema,
+                username=conn.login,
+                password=conn.password,
+            )
+
+            # Test the connection by attempting to get a token
+            token = hook.get_token()
+
+            if not token:
+                return False, "Failed to retrieve authentication token. Please verify your credentials."
+
+            try:
+                # Check database accessibility (lightweight call)
+                base_url = hook.get_base_url()
+
+                # First check if the base URL is properly formed
+                if not base_url.startswith("https://"):
+                    return False, f"Invalid base URL format: {base_url}"
+
+                # Test endpoint with detailed error information
+                try:
+                    # response = hook.get_odata_response(base_url)  # Response not used directly
+                    hook.get_odata_response(base_url)
+
+                    # Check service status
+                    return True, "Connection successful."
+                except Exception as api_error:
+                    # Try to extract more useful information from the API error
+                    error_msg = str(api_error)
+                    if "401" in error_msg:
+                        return (
+                            False,
+                            "Authentication rejected by FileMaker Cloud API. "
+                            "Please verify your credentials and permissions.",
+                        )
+                    elif "404" in error_msg:
+                        return False, f"Database not found: {conn.schema}. Please verify your database name."
+                    else:
+                        return False, f"API Error: {error_msg}"
+            except Exception as url_error:
+                return False, f"Failed to construct base URL: {str(url_error)}"
+
+        except ValueError as ve:
+            return False, f"Configuration error: {str(ve)}"
+        except ConnectionError as ce:
+            return False, f"Connection failed: Could not connect to {conn.host}. {str(ce)}"
+        except Exception as e:
+            error_type = type(e).__name__
+            return False, f"Connection failed ({error_type}): {str(e)}"
+
+    def get_schema(self, database: str, layout: str) -> dict:
+        """
+        Get the schema for a FileMaker layout.
+
+        :param database: The FileMaker database name
+        :param layout: The FileMaker layout name
+        :return: The schema as a dictionary
+        """
+        self.log.info("Getting schema for database %s, layout %s", database, layout)
+        url = f"{self.get_base_url()}/{database}/layouts/{layout}"
+        response = self._do_api_call(url, "GET")
+        return response
+
+    def create_record(self, database: str, layout: str, record_data: dict) -> dict:
+        """
+        Create a new record in a FileMaker database.
+
+        :param database: The database name
+        :type database: str
+        :param layout: The layout name
+        :type layout: str
+        :param record_data: The record data
+        :type record_data: dict
+        :return: The created record
+        :rtype: dict
+        """
+        base_url = self.get_base_url()
+        endpoint = f"{base_url}/{layout}"
+
+        # Validate URL length before executing
+        self.validate_url_length(endpoint)
+
+        # Get token for authorization
+        token = self.get_token()
+
+        # Prepare headers
+        headers = {"Authorization": f"FMID {token}", "Content-Type": "application/json", "Accept": "application/json"}
+
+        # Prepare data
+        data = record_data
+
+        # Execute request
+        response = requests.post(endpoint, headers=headers, json=data)
+
+        # Check for errors
+        if response.status_code >= 400:
+            raise Exception(f"FileMaker create record error: {response.status_code} - {response.text}")
+
+        # Return created record
+        return response.json()
+
+    def update_record(self, database: str, layout: str, record_id: str, record_data: dict) -> dict:
+        """
+        Update a record in a FileMaker database.
+
+        :param database: The database name
+        :type database: str
+        :param layout: The layout name
+        :type layout: str
+        :param record_id: The record ID
+        :type record_id: str
+        :param record_data: The record data
+        :type record_data: dict
+        :return: The updated record
+        :rtype: dict
+        """
+        base_url = self.get_base_url()
+        endpoint = f"{base_url}/{layout}({record_id})"
+
+        # Validate URL length before executing
+        self.validate_url_length(endpoint)
+
+        # Get token for authorization
+        token = self.get_token()
+
+        # Prepare headers
+        headers = {"Authorization": f"FMID {token}", "Content-Type": "application/json", "Accept": "application/json"}
+
+        # Prepare data
+        data = record_data
+
+        # Execute request
+        response = requests.patch(endpoint, headers=headers, json=data)
+
+        # Check for errors
+        if response.status_code >= 400:
+            raise Exception(f"FileMaker update record error: {response.status_code} - {response.text}")
+
+        # Return updated record
+        return response.json()
+
+    def delete_record(self, database: str, layout: str, record_id: str) -> bool:
+        """
+        Delete a record from a FileMaker database.
+
+        :param database: The database name
+        :type database: str
+        :param layout: The layout name
+        :type layout: str
+        :param record_id: The record ID
+        :type record_id: str
+        :return: True if successful
+        :rtype: bool
+        """
+        base_url = self.get_base_url()
+        endpoint = f"{base_url}/{layout}({record_id})"
+
+        # Validate URL length before executing
+        self.validate_url_length(endpoint)
+
+        # Get token for authorization
+        token = self.get_token()
+
+        # Prepare headers
+        headers = {"Authorization": f"FMID {token}", "Accept": "application/json"}
+
+        # Execute request
+        response = requests.delete(endpoint, headers=headers)
+
+        # Check for errors
+        if response.status_code >= 400:
+            raise Exception(f"FileMaker delete record error: {response.status_code} - {response.text}")
+
+        # Return success
+        return response.status_code == 204
+
+    def bulk_create_records(self, database: str, layout: str, records_data: list) -> list:
+        """
+        Create multiple records in a FileMaker database in a single request.
+
+        :param database: The database name
+        :type database: str
+        :param layout: The layout name
+        :type layout: str
+        :param records_data: List of record data
+        :type records_data: list
+        :return: The created records
+        :rtype: list
+        """
+        base_url = self.get_base_url()
+        endpoint = f"{base_url}/{layout}"
+
+        # Validate URL length - only for the base URL since the data is in the request body
+        self.validate_url_length(endpoint)
+
+        # Get token for authorization
+        token = self.get_token()
+
+        # Prepare headers
+        headers = {"Authorization": f"FMID {token}", "Content-Type": "application/json", "Accept": "application/json"}
+
+        # Execute requests one at a time (OData doesn't support bulk create in a standard way)
+        created_records = []
+        for record_data in records_data:
+            response = requests.post(endpoint, headers=headers, json=record_data)
+            if response.status_code >= 400:
+                raise Exception(f"FileMaker bulk create error: {response.status_code} - {response.text}")
+            created_records.append(response.json())
+
+        # Return all created records
+        return created_records
+
+    def execute_function(self, database: str, layout: str, script_name: str, script_params: dict = None) -> dict:
+        """
+        Execute a script in a FileMaker database.
+
+        :param database: The database name
+        :type database: str
+        :param layout: The layout name
+        :type layout: str
+        :param script_name: The script name
+        :type script_name: str
+        :param script_params: Script parameters
+        :type script_params: dict
+        :return: The script result
+        :rtype: dict
+        """
+        base_url = self.get_base_url()
+        endpoint = f"{base_url}/{layout}/script"
+
+        # Prepare query parameters for the script execution
+        params = {"script": script_name}
+        if script_params:
+            params["script-params"] = json.dumps(script_params)
+
+        # Validate URL length before executing
+        self.validate_url_length(endpoint, params)
+
+        # Make the request using get_odata_response to ensure proper error handling
+        return self.get_odata_response(endpoint=endpoint, params=params)
