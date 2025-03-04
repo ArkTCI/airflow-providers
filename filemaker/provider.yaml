@@ -19,25 +19,20 @@
 package-name: arktci-airflow-provider-filemaker
 name: FileMaker Cloud
 description: |
-  Provider for FileMaker Cloud OData API integration, including custom Cognito authentication.
+  FileMaker Cloud provider for Apache Airflow.
+  
+  This provider enables integration with FileMaker Cloud's OData API, allowing data extraction, 
+  transformation, and loading operations with FileMaker databases through Airflow workflows.
 
 state: ready
 source-date-epoch: 1718476800
 # note that those versions are maintained by release manager - do not update them manually
 versions:
   - 2.0.5
-  - 2.0.4
-  - 2.0.3
-  - 2.0.2
-  - 2.0.1
-  - 2.0.0
-  - 1.3.1
-  - 1.3.0
-  - 1.2.0
   - 1.1.1
   - 1.1.0
 dependencies:
-  - apache-airflow>=2.0.0
+  - apache-airflow>=2.9.0
   - boto3>=1.16.0 
   - requests>=2.25.0
   - pandas>=1.0.0
@@ -45,8 +40,11 @@ dependencies:
 
 integrations:
   - integration-name: FileMaker Cloud
-    external-doc-url: https://claris.com/filemaker/cloud/
-    tags: [service]
+    external-doc-url: https://github.com/ArkTCI/airflow-providers/wiki#installation
+    how-to-guide:
+      - https://github.com/ArkTCI/airflow-providers/wiki#installation
+    logo: https://arkapps-assessts.s3.us-east-1.amazonaws.com/cropped-favicon-ark-32x32.pngpng
+    tags: [service, cloud, database, arktci]
 
 operators:
   - integration-name: FileMaker Cloud
@@ -58,6 +56,26 @@ hooks:
     python-modules:
       - airflow.providers.filemaker.hooks.filemaker
 
+sensors:
+  - integration-name: FileMaker Cloud
+    python-modules:
+      - airflow.providers.filemaker.sensors.filemaker
+
 connection-types:
   - hook-class-name: airflow.providers.filemaker.hooks.filemaker.FileMakerHook
     connection-type: filemaker 
+
+additional-extras:
+  - name: amazon
+    dependencies:
+      - apache-airflow-providers-amazon>=2.0.0
+
+example-dags:
+  - airflow.providers.filemaker.example_dags.example_filemaker
+  - airflow.providers.filemaker.example_dags.example_filemaker_to_s3
+
+python-versions:
+  - 3.9
+  - 3.10
+  - 3.11
+  - 3.12 
