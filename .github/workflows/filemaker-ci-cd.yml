@@ -57,6 +57,10 @@ jobs:
           cd filemaker
           python -m build
 
+      - name: Install twine
+        if: steps.check_version.outputs.exists != 'true'
+        run: pip install twine
+
       - name: Publish package to PyPI
         if: steps.check_version.outputs.exists != 'true'
         uses: pypa/gh-action-pypi-publish@v1.6.0
