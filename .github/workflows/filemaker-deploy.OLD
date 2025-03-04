@@ -1,23 +1,7 @@
 name: FileMaker Provider Deploy
 
 on:
-  pull_request:
-    types: [opened, synchronize, ready_for_review]
-    branches:
-      - main
-    paths:
-      - "filemaker/**"
   workflow_dispatch:
-    inputs:
-      version:
-        description: 'Version to deploy'
-        required: true
-  workflow_call:
-    inputs:
-      version:
-        description: 'Version to deploy'
-        type: string
-        required: false
 
 jobs:
   validate-pr:
