@@ -4,9 +4,10 @@ Operators for FileMaker Cloud integration.
 This module contains operators for executing tasks against FileMaker Cloud's OData API.
 """
 
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 from airflow.models import BaseOperator
+from airflow.providers.amazon.aws.hooks.s3 import S3Hook
 from airflow.utils.decorators import apply_defaults
 
 from airflow.providers.filemaker.hooks.filemaker import FileMakerHook
@@ -346,3 +347,433 @@ class FileMakerSchemaOperator(BaseOperator):
         except Exception as e:
             self.log.error(f"Error processing schema: {str(e)}")
             raise ValueError(f"Failed to process OData schema: {str(e)}")
+
+
+class FileMakerCreateRecordOperator(BaseOperator):
+    """
+    Creates a new record in FileMaker Cloud using the OData API.
+
+    :param table: The table name (OData entity set) to create a record in
+    :type table: str
+    :param data: Dictionary containing the field values for the new record
+    :type data: Dict[str, Any]
+    :param filemaker_conn_id: The Airflow connection ID for FileMaker Cloud
+    :type filemaker_conn_id: str
+    """
+
+    template_fields = ("table", "data")
+    template_ext = ()
+    ui_color = "#c2e3f0"  # Light blue
+
+    @apply_defaults
+    def __init__(
+        self,
+        *,
+        table: str,
+        data: Dict[str, Any],
+        filemaker_conn_id: str = "filemaker_default",
+        **kwargs,
+    ) -> None:
+        super().__init__(**kwargs)
+        self.table = table
+        self.data = data
+        self.filemaker_conn_id = filemaker_conn_id
+
+    def execute(self, context: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Execute the operator.
+
+        Creates a new record in FileMaker Cloud and returns the created record.
+
+        :param context: The task context
+        :type context: Dict[str, Any]
+        :return: The created record response from FileMaker
+        :rtype: Dict[str, Any]
+        """
+        self.log.info(f"Creating record in FileMaker table '{self.table}'")
+
+        # Initialize the FileMaker hook
+        hook = FileMakerHook(filemaker_conn_id=self.filemaker_conn_id)
+
+        # Create the record
+        result = hook.create_record(table=self.table, data=self.data)
+
+        # Log the result
+        self.log.info(f"Successfully created record in table '{self.table}'")
+
+        return result
+
+
+class FileMakerUpdateRecordOperator(BaseOperator):
+    """
+    Updates an existing record in FileMaker Cloud using the OData API.
+
+    :param table: The table name (OData entity set) to update a record in
+    :type table: str
+    :param record_id: The ID of the record to update
+    :type record_id: str
+    :param data: Dictionary containing the field values to update
+    :type data: Dict[str, Any]
+    :param filemaker_conn_id: The Airflow connection ID for FileMaker Cloud
+    :type filemaker_conn_id: str
+    """
+
+    template_fields = ("table", "record_id", "data")
+    template_ext = ()
+    ui_color = "#e0f0c2"  # Light green
+
+    @apply_defaults
+    def __init__(
+        self,
+        *,
+        table: str,
+        record_id: str,
+        data: Dict[str, Any],
+        filemaker_conn_id: str = "filemaker_default",
+        **kwargs,
+    ) -> None:
+        super().__init__(**kwargs)
+        self.table = table
+        self.record_id = record_id
+        self.data = data
+        self.filemaker_conn_id = filemaker_conn_id
+
+    def execute(self, context: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Execute the operator.
+
+        Updates an existing record in FileMaker Cloud and returns the update response.
+
+        :param context: The task context
+        :type context: Dict[str, Any]
+        :return: The update response from FileMaker
+        :rtype: Dict[str, Any]
+        """
+        self.log.info(f"Updating record '{self.record_id}' in FileMaker table '{self.table}'")
+
+        # Initialize the FileMaker hook
+        hook = FileMakerHook(filemaker_conn_id=self.filemaker_conn_id)
+
+        # Update the record
+        result = hook.update_record(table=self.table, record_id=self.record_id, data=self.data)
+
+        # Log the result
+        self.log.info(f"Successfully updated record '{self.record_id}' in table '{self.table}'")
+
+        return result
+
+
+class FileMakerDeleteRecordOperator(BaseOperator):
+    """
+    Deletes a record from FileMaker Cloud using the OData API.
+
+    :param table: The table name (OData entity set) to delete a record from
+    :type table: str
+    :param record_id: The ID of the record to delete
+    :type record_id: str
+    :param filemaker_conn_id: The Airflow connection ID for FileMaker Cloud
+    :type filemaker_conn_id: str
+    """
+
+    template_fields = ("table", "record_id")
+    template_ext = ()
+    ui_color = "#f0c2e3"  # Light pink
+
+    @apply_defaults
+    def __init__(
+        self,
+        *,
+        table: str,
+        record_id: str,
+        filemaker_conn_id: str = "filemaker_default",
+        **kwargs,
+    ) -> None:
+        super().__init__(**kwargs)
+        self.table = table
+        self.record_id = record_id
+        self.filemaker_conn_id = filemaker_conn_id
+
+    def execute(self, context: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Execute the operator.
+
+        Deletes a record from FileMaker Cloud and returns the deletion response.
+
+        :param context: The task context
+        :type context: Dict[str, Any]
+        :return: The deletion response from FileMaker
+        :rtype: Dict[str, Any]
+        """
+        self.log.info(f"Deleting record '{self.record_id}' from FileMaker table '{self.table}'")
+
+        # Initialize the FileMaker hook
+        hook = FileMakerHook(filemaker_conn_id=self.filemaker_conn_id)
+
+        # Delete the record
+        result = hook.delete_record(table=self.table, record_id=self.record_id)
+
+        # Log the result
+        self.log.info(f"Successfully deleted record '{self.record_id}' from table '{self.table}'")
+
+        return result
+
+
+class FileMakerBulkCreateOperator(BaseOperator):
+    """
+    Creates multiple records in FileMaker Cloud in a batch operation.
+
+    :param table: The table name (OData entity set) to create records in
+    :type table: str
+    :param records: List of dictionaries containing the field values for each new record
+    :type records: List[Dict[str, Any]]
+    :param filemaker_conn_id: The Airflow connection ID for FileMaker Cloud
+    :type filemaker_conn_id: str
+    """
+
+    template_fields = ("table", "records")
+    template_ext = ()
+    ui_color = "#c2f0e3"  # Light cyan
+
+    @apply_defaults
+    def __init__(
+        self,
+        *,
+        table: str,
+        records: List[Dict[str, Any]],
+        filemaker_conn_id: str = "filemaker_default",
+        **kwargs,
+    ) -> None:
+        super().__init__(**kwargs)
+        self.table = table
+        self.records = records
+        self.filemaker_conn_id = filemaker_conn_id
+
+    def execute(self, context: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Execute the operator.
+
+        Creates multiple records in FileMaker Cloud and returns the batch creation response.
+
+        :param context: The task context
+        :type context: Dict[str, Any]
+        :return: The batch creation response from FileMaker
+        :rtype: Dict[str, Any]
+        """
+        self.log.info(f"Bulk creating {len(self.records)} records in FileMaker table '{self.table}'")
+
+        # Initialize the FileMaker hook
+        hook = FileMakerHook(filemaker_conn_id=self.filemaker_conn_id)
+
+        # Create the records in bulk
+        result = hook.bulk_create_records(table=self.table, records=self.records)
+
+        # Log the result
+        self.log.info(f"Successfully bulk created {len(self.records)} records in table '{self.table}'")
+
+        return result
+
+
+class FileMakerExecuteFunctionOperator(BaseOperator):
+    """
+    Executes a FileMaker script/function through the OData API.
+
+    :param function_name: The name of the FileMaker script/function to execute
+    :type function_name: str
+    :param parameters: Dictionary of parameters to pass to the function (optional)
+    :type parameters: Dict[str, Any]
+    :param filemaker_conn_id: The Airflow connection ID for FileMaker Cloud
+    :type filemaker_conn_id: str
+    """
+
+    template_fields = ("function_name", "parameters")
+    template_ext = ()
+    ui_color = "#f0e3c2"  # Light orange
+
+    @apply_defaults
+    def __init__(
+        self,
+        *,
+        function_name: str,
+        parameters: Optional[Dict[str, Any]] = None,
+        filemaker_conn_id: str = "filemaker_default",
+        **kwargs,
+    ) -> None:
+        super().__init__(**kwargs)
+        self.function_name = function_name
+        self.parameters = parameters
+        self.filemaker_conn_id = filemaker_conn_id
+
+    def execute(self, context: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Execute the operator.
+
+        Executes a FileMaker script/function and returns the execution response.
+
+        :param context: The task context
+        :type context: Dict[str, Any]
+        :return: The function execution response from FileMaker
+        :rtype: Dict[str, Any]
+        """
+        self.log.info(f"Executing FileMaker function '{self.function_name}'")
+
+        # Initialize the FileMaker hook
+        hook = FileMakerHook(filemaker_conn_id=self.filemaker_conn_id)
+
+        # Execute the function
+        result = hook.execute_function(function_name=self.function_name, parameters=self.parameters)
+
+        # Log the result
+        self.log.info(f"Successfully executed FileMaker function '{self.function_name}'")
+
+        return result
+
+
+class FileMakerToS3Operator(BaseOperator):
+    """
+    Extracts data from FileMaker Cloud and uploads it to Amazon S3.
+
+    :param endpoint: The OData endpoint to extract data from
+    :type endpoint: str
+    :param s3_bucket: The S3 bucket to upload data to
+    :type s3_bucket: str
+    :param s3_key: The S3 key to upload data to
+    :type s3_key: str
+    :param filemaker_conn_id: The Airflow connection ID for FileMaker Cloud
+    :type filemaker_conn_id: str
+    :param aws_conn_id: The Airflow connection ID for AWS
+    :type aws_conn_id: str
+    :param filter_query: OData filter query expression (optional)
+    :type filter_query: str
+    :param select: Comma-separated list of fields to extract (optional)
+    :type select: str
+    :param expand: Related entities to expand (optional)
+    :type expand: str
+    :param file_format: Format to save the data (json, csv, parquet) (default: json)
+    :type file_format: str
+    :param replace: Whether to replace existing S3 file (default: True)
+    :type replace: bool
+    :param top: Maximum number of records to extract (optional)
+    :type top: int
+    :param batch_size: Number of records to fetch in each batch (default: 1000)
+    :type batch_size: int
+    """
+
+    template_fields = ("endpoint", "s3_bucket", "s3_key", "filter_query")
+    template_ext = ()
+    ui_color = "#80cbc4"  # Teal
+
+    @apply_defaults
+    def __init__(
+        self,
+        *,
+        endpoint: str,
+        s3_bucket: str,
+        s3_key: str,
+        filemaker_conn_id: str = "filemaker_default",
+        aws_conn_id: str = "aws_default",
+        filter_query: Optional[str] = None,
+        select: Optional[str] = None,
+        expand: Optional[str] = None,
+        file_format: str = "json",
+        replace: bool = True,
+        top: Optional[int] = None,
+        batch_size: int = 1000,
+        **kwargs,
+    ) -> None:
+        super().__init__(**kwargs)
+        self.endpoint = endpoint
+        self.s3_bucket = s3_bucket
+        self.s3_key = s3_key
+        self.filemaker_conn_id = filemaker_conn_id
+        self.aws_conn_id = aws_conn_id
+        self.filter_query = filter_query
+        self.select = select
+        self.expand = expand
+        self.file_format = file_format.lower()
+        self.replace = replace
+        self.top = top
+        self.batch_size = batch_size
+
+    def execute(self, context: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Execute the operator.
+
+        Extracts data from FileMaker Cloud and uploads it to Amazon S3.
+
+        :param context: The task context
+        :type context: Dict[str, Any]
+        :return: Dictionary with upload details
+        :rtype: Dict[str, Any]
+        """
+        import tempfile
+
+        self.log.info(
+            f"Extracting data from FileMaker table '{self.endpoint}' "
+            f"and uploading to S3: s3://{self.s3_bucket}/{self.s3_key}"
+        )
+
+        # Initialize hooks
+        filemaker_hook = FileMakerHook(filemaker_conn_id=self.filemaker_conn_id)
+        s3_hook = S3Hook(aws_conn_id=self.aws_conn_id)
+
+        # Create parameters for the query
+        params = {}
+        if self.filter_query:
+            params["$filter"] = self.filter_query
+        if self.select:
+            params["$select"] = self.select
+        if self.expand:
+            params["$expand"] = self.expand
+        if self.top:
+            params["$top"] = self.top
+
+        # Get data from FileMaker
+        data = filemaker_hook.get_records(table=self.endpoint, **params)
+
+        # Convert data to the requested format
+        with tempfile.NamedTemporaryFile(mode="w+", suffix=f".{self.file_format}") as tmp:
+            if self.file_format == "json":
+                import json
+
+                json.dump(data, tmp)
+            elif self.file_format == "csv":
+                import csv
+
+                import pandas as pd
+
+                # Convert to DataFrame
+                records = data.get("value", [])
+                df = pd.DataFrame(records)
+
+                # Write to CSV
+                df.to_csv(tmp.name, index=False, quoting=csv.QUOTE_NONNUMERIC)
+            elif self.file_format == "parquet":
+                import pandas as pd
+
+                # Convert to DataFrame
+                records = data.get("value", [])
+                df = pd.DataFrame(records)
+
+                # Write to parquet
+                df.to_parquet(tmp.name, index=False)
+            else:
+                raise ValueError(f"Unsupported file format: {self.file_format}")
+
+            # Flush to make sure all data is written
+            tmp.flush()
+
+            # Upload to S3
+            tmp.seek(0)
+            s3_hook.load_file(filename=tmp.name, key=self.s3_key, bucket_name=self.s3_bucket, replace=self.replace)
+
+        # Log the result
+        num_records = len(data.get("value", []))
+        self.log.info(f"Successfully uploaded {num_records} records to s3://{self.s3_bucket}/{self.s3_key}")
+
+        return {
+            "records": num_records,
+            "s3_bucket": self.s3_bucket,
+            "s3_key": self.s3_key,
+            "format": self.file_format,
+            "source": self.endpoint,
+        }
