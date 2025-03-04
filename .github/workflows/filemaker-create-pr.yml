@@ -50,7 +50,7 @@ jobs:
   # Call the dedicated test workflow
   test:
     name: Run Tests
-    needs: [extract-info]
+    needs: [extract-info, lint]
     if: always() && (github.event_name != 'push' || success())
     uses: ./.github/workflows/filemaker-test.yml
 
