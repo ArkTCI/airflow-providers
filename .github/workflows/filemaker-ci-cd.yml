@@ -2,9 +2,6 @@ name: FileMaker Provider CI/CD
 
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - main
   pull_request:
     branches:
       - main
@@ -56,18 +53,10 @@ jobs:
           cd filemaker
           python -m build
 
-      - name: Install twine
-        if: steps.check_version.outputs.exists != 'true'
-        run: pip install twine
-
       - name: Publish package to PyPI
         if: steps.check_version.outputs.exists != 'true'
-        uses: pypa/gh-action-pypi-publish@v1.6.0
-        with:
-          packages_dir: filemaker/dist/
-          password: ${{ secrets.PYPI_API_TOKEN }}
-          skip_existing: true
-          verbose: true
+        run: |
+          python -m twine upload --skip-existing filemaker/dist/* -u __token__ -p "${{ secrets.PYPI_API_TOKEN }}" --verbose
 
   build-docker-image:
     name: Build and Push Docker Image
