@@ -3,4 +3,4 @@ Version information for the FileMaker Cloud provider.
 This file serves as the single source of truth for version information.
 """
 # Version managed by bump2version
-__version__ = "2.1.1"
+__version__ = "2.2.0"
