@@ -40,7 +40,7 @@ jobs:
         with:
           context: .
           push: true
-          file: airflow-dev/providers/.github/docker/Dockerfile.dependencies
+          file: .github/docker/Dockerfile.dependencies
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           build-args: |
