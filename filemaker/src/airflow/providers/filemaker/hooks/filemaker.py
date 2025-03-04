@@ -90,9 +90,10 @@ class FileMakerHook(BaseHook):
         """
         # Skip connection retrieval in test environments
         import sys
-        if 'pytest' in sys.modules:
+
+        if "pytest" in sys.modules:
             return
-            
+
         try:
             conn = BaseHook.get_connection(self.filemaker_conn_id)
             self.host = self.host or conn.host
@@ -146,9 +147,10 @@ class FileMakerHook(BaseHook):
         """
         # For test environments, simply return a test token
         import sys
-        if 'pytest' in sys.modules:
+
+        if "pytest" in sys.modules:
             return "test-token"
-            
+
         # Initialize auth_client if it's None but we have credentials
         if self.auth_client is None and self.host and self.username and self.password:
             self.log.info("Initializing auth client")

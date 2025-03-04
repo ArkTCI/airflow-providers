@@ -22,7 +22,7 @@ on:
 jobs:
   validate-pr:
     runs-on: ubuntu-latest
-    if: github.event.pull_request.merged == false && startsWith(github.event.pull_request.head.ref, 'release/v')
+    if: github.event.pull_request.merged == false && contains(github.event.pull_request.head.ref, 'release/v')
     outputs:
       version: ${{ steps.extract_version.outputs.version }}
       can_merge: ${{ steps.check_status.outputs.can_merge }}

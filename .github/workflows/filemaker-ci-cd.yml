@@ -1,139 +1,109 @@
 name: FileMaker Provider CI/CD
 
 on:
-  push:
   workflow_dispatch:
-    inputs:
-      run_tests_only:
-        description: 'Run only tests and linting (no release)'
-        type: boolean
-        default: true
-        required: true
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+    types:
+      - closed
 
 permissions:
   contents: read
 
 jobs:
-  check-existing-release:
-    name: Check Existing Release
-    runs-on: ubuntu-latest
+  publish-to-pypi:
+    name: Publish to PyPI
     outputs:
-      should_continue: ${{ steps.check_release.outputs.should_continue }}
-      version: ${{ steps.get_version.outputs.version }}
-    steps:
-      - name: Get version from tag
-        id: get_version
-        if: startsWith(github.ref, 'refs/tags/v')
-        run: |
-          VERSION=${GITHUB_REF#refs/tags/v}
-          echo "version=$VERSION" >> $GITHUB_OUTPUT
-          echo "Version: $VERSION"
-      
-      - name: Set test-only mode for manual trigger
-        id: get_manual_version
-        if: github.event_name == 'workflow_dispatch'
-        run: |
-          echo "Using workflow dispatch - test only mode"
-          echo "version=test-only" >> $GITHUB_OUTPUT
-      
-      - name: Check if release exists
-        id: check_release
-        run: |
-          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
-            # Always continue for manual test runs
-            echo "should_continue=true" >> $GITHUB_OUTPUT
-            echo "Manual test run - continuing with workflow"
-          else
-            VERSION="${{ steps.get_version.outputs.version }}"
-            # Check if a GitHub release already exists for this version
-            RELEASE_EXISTS=$(curl -s -o /dev/null -w "%{http_code}" \
-              -H "Authorization: token ${{ github.token }}" \
-              "https://api.github.com/repos/${{ github.repository }}/releases/tags/v${VERSION}")
-            
-            if [[ "$RELEASE_EXISTS" == "200" ]]; then
-              echo "Release v${VERSION} already exists. Skipping validation."
-              echo "should_continue=false" >> $GITHUB_OUTPUT
-            else
-              echo "No existing release found for v${VERSION}. Continuing with validation."
-              echo "should_continue=true" >> $GITHUB_OUTPUT
-            fi
-          fi
-
-  lint:
-    name: Lint Code
-    needs: [check-existing-release]
-    if: needs.check-existing-release.outputs.should_continue == 'true'
-    uses: ./.github/workflows/filemaker-lint.yml
-
-  test:
-    name: Run Tests
-    needs: [check-existing-release, lint]
-    if: needs.check-existing-release.outputs.should_continue == 'true' && needs.lint.outputs.success == 'true'
-    uses: ./.github/workflows/filemaker-test.yml
-    with:
-      ref: ${{ github.ref }}
-
-  # Trigger PyPI publishing workflow for tags
-  notify-publish:
-    name: Notify Publishing Workflow
-    needs: [check-existing-release, lint, test]
-    if: startsWith(github.ref, 'refs/tags/v') && needs.check-existing-release.outputs.should_continue == 'true' && needs.test.outputs.success == 'true' && needs.lint.outputs.success == 'true'
+      version: ${{ steps.extract_version.outputs.version }}
+      published: ${{ steps.check_version.outputs.exists != 'true' }}
+    container:
+      image: ghcr.io/arktci/airflow-providers/filemaker-dependencies:latest
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
     runs-on: ubuntu-latest
     steps:
-      - name: Trigger PyPI publish workflow
-        uses: peter-evans/repository-dispatch@v2
+      - name: Checkout code
+        uses: actions/checkout@v3
         with:
-          event-type: publish-to-pypi-event
-          client-payload: '{"version": "${{ needs.check-existing-release.outputs.version }}", "tag": "v${{ needs.check-existing-release.outputs.version }}"}'
-      
-      - name: Log notification
-        run: |
-          echo "Notification sent to publish workflow for version ${{ needs.check-existing-release.outputs.version }}"
-          echo "Publishing will be handled by the publish-filemaker-to-pypi.yml workflow"
+          ref: main
 
-  summary:
-    needs: [check-existing-release, lint, test, notify-publish]
-    if: always() && needs.check-existing-release.outputs.should_continue == 'true'
-    runs-on: ubuntu-latest
-    steps:
-      - name: Display Workflow Status
+      - name: Extract version
+        id: extract_version
         run: |
-          echo "## FileMaker Provider CI/CD Workflow Summary" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          
-          # Event type info
-          echo "**Event Type:** ${{ github.event_name }}" >> $GITHUB_STEP_SUMMARY
-          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
-            echo "**Manual Trigger - Test Only Mode**" >> $GITHUB_STEP_SUMMARY
+          VERSION=$(grep -o '"[0-9]\+\.[0-9]\+\.[0-9]\+"' filemaker/version.py | tr -d '"')
+          echo "Version from version.py: $VERSION"
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+      - name: Check if version exists on PyPI
+        id: check_version
+        run: |
+          HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" https://pypi.org/pypi/apache-airflow-providers-filemaker/${{ steps.extract_version.outputs.version }}/json)
+          if [ "$HTTP_STATUS" == "200" ]; then
+            echo "Version ${{ steps.extract_version.outputs.version }} already exists on PyPI"
+            echo "exists=true" >> $GITHUB_OUTPUT
           else
-            echo "**Tag Push - Version:** ${{ needs.check-existing-release.outputs.version }}" >> $GITHUB_STEP_SUMMARY
+            echo "Version ${{ steps.extract_version.outputs.version }} does not exist on PyPI"
+            echo "exists=false" >> $GITHUB_OUTPUT
           fi
-          echo "" >> $GITHUB_STEP_SUMMARY
-          
-          # Job status table
-          echo "| Job | Status |" >> $GITHUB_STEP_SUMMARY
-          echo "| --- | ------ |" >> $GITHUB_STEP_SUMMARY
-          echo "| Lint | ${{ needs.lint.result == 'success' && '✅ Passed' || (needs.lint.result == 'skipped' && '⏭️ Skipped' || '❌ Failed') }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| Test | ${{ needs.test.result == 'success' && '✅ Passed' || (needs.test.result == 'skipped' && '⏭️ Skipped' || '❌ Failed') }} |" >> $GITHUB_STEP_SUMMARY
-          
-          if [[ "${{ github.event_name }}" != "workflow_dispatch" && startsWith(github.ref, 'refs/tags/v') ]]; then
-            echo "| Notify Publish | ${{ needs.notify-publish.result == 'success' && '✅ Sent' || (needs.notify-publish.result == 'skipped' && '⏭️ Skipped' || '❌ Failed') }} |" >> $GITHUB_STEP_SUMMARY
-            echo "" >> $GITHUB_STEP_SUMMARY
-            echo "**Note:** Actual publishing is handled by the publish-filemaker-to-pypi.yml workflow" >> $GITHUB_STEP_SUMMARY
-          fi
-          
-          # Print to console as well
-          echo "Event Type: ${{ github.event_name }}"
-          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
-            echo "Manual Trigger - Test Only Mode"
-          else
-            echo "Tag Push - Version: ${{ needs.check-existing-release.outputs.version }}"
-          fi
-          
-          echo "Lint Status: ${{ needs.lint.result }}"
-          echo "Test Status: ${{ needs.test.result }}"
-          
-          if [[ "${{ github.event_name }}" != "workflow_dispatch" && startsWith(github.ref, 'refs/tags/v') ]]; then
-            echo "Notify Publish Status: ${{ needs.notify-publish.result }}"
-            echo "Note: Actual publishing is handled by the publish-filemaker-to-pypi.yml workflow"
-          fi 
+
+      - name: Build distribution
+        if: steps.check_version.outputs.exists != 'true'
+        run: |
+          cd filemaker
+          python -m build
+
+      - name: Publish package to PyPI
+        if: steps.check_version.outputs.exists != 'true'
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: filemaker/dist/
+          password: ${{ secrets.PYPI_API_TOKEN }}
+          skip-existing: true
+          verbose: true
+
+  build-docker-image:
+    name: Build and Push Docker Image
+    needs: [publish-to-pypi]
+    runs-on: ubuntu-latest
+    env:
+      REGISTRY: docker.io
+      IMAGE_NAME: arktci/airflow
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+        with:
+          ref: main
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@v2
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ vars.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+      
+      - name: Get version
+        id: get_version
+        run: |
+          VERSION=$(grep -o '"[0-9]\+\.[0-9]\+\.[0-9]\+"' filemaker/version.py | tr -d '"')
+          echo "Version from version.py: $VERSION"
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+      - name: Build and push Docker image
+        if: needs.publish-to-pypi.outputs.version != ''
+        uses: docker/build-push-action@v4
+        with:
+          context: ./filemaker
+          push: true
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:2.10.5
+          build-args: |
+            PROVIDER_VERSION=2.10.5
