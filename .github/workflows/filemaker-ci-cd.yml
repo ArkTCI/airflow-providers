@@ -59,11 +59,11 @@ jobs:
 
       - name: Publish package to PyPI
         if: steps.check_version.outputs.exists != 'true'
-        uses: pypa/gh-action-pypi-publish@release/v1
+        uses: pypa/gh-action-pypi-publish@v1.6.0
         with:
-          packages-dir: filemaker/dist/
+          packages_dir: filemaker/dist/
           password: ${{ secrets.PYPI_API_TOKEN }}
-          skip-existing: true
+          skip_existing: true
           verbose: true
 
   build-docker-image:
