@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 # These would replace setup.py metadata
 name = "arktci-airflow-provider-filemaker"
-version = "2.2.0"
+version = "2.3.0"
 description = "Apache Airflow provider for FileMaker Cloud"
 readme = "README.md"
 requires-python = ">=3.8"
