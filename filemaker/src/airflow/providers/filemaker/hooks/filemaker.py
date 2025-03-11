@@ -96,18 +96,39 @@ class FileMakerHook(BaseHook):
         # Skip connection retrieval in test environments
         import sys
 
+        self.log.debug("Attempting to retrieve connection info for connection id: %s", self.filemaker_conn_id)
+        
         if "pytest" in sys.modules:
+            self.log.info("Running in pytest environment, skipping connection retrieval")
             return
 
         try:
+            self.log.info("Getting connection information from Airflow connections")
             conn = BaseHook.get_connection(self.filemaker_conn_id)
+            
+            # Track what we're updating for logging purposes
+            original_values = {
+                'host': self.host,
+                'database': self.database,
+                'username': self.username
+                # Intentionally omitting password for security
+            }
+            
             self.host = self.host or conn.host
             self.database = self.database or conn.schema
             self.username = self.username or conn.login
             self.password = self.password or conn.password
+            
+            # Log what's been updated, without exposing sensitive data
+            for param_name in ['host', 'database', 'username']:
+                param_value = getattr(self, param_name)
+                if param_value != original_values[param_name] and param_value:
+                    self.log.info("Updated %s from connection", param_name)
+                    
+            self.log.debug("Connection info retrieved successfully")
         except Exception as e:
             # Log the error but don't fail - we might have params passed directly
-            self.log.error(f"Error getting connection info: {str(e)}")
+            self.log.error("Error getting connection info: %s", str(e), exc_info=True)
 
     def get_conn(self):
         """
@@ -115,12 +136,26 @@ class FileMakerHook(BaseHook):
 
         :return: A connection object
         """
+        self.log.info("Establishing connection to FileMaker Cloud")
+        
         if not self.auth_client:
+            self.log.debug("Initializing auth client for host: %s, username: %s", self.host, self.username)
             # Initialize the auth object
             self.auth_client = FileMakerCloudAuth(host=self.host, username=self.username, password=self.password)
+            self.log.info("Auth client initialized successfully")
+        else:
+            self.log.debug("Using existing auth client")
 
-        # Return a connection-like object that can be used by other methods
-        return {"host": self.host, "database": self.database, "auth": self.auth_client, "base_url": self.get_base_url()}
+        # Prepare connection object
+        conn_obj = {
+            "host": self.host, 
+            "database": self.database, 
+            "auth": self.auth_client, 
+            "base_url": self.get_base_url()
+        }
+        
+        self.log.info("Connection to FileMaker Cloud established")
+        return conn_obj
 
     def get_base_url(self) -> str:
         """
@@ -129,18 +164,24 @@ class FileMakerHook(BaseHook):
         :return: The base URL
         :rtype: str
         """
+        self.log.debug("Generating base URL for OData API")
+        
         if not self.host or not self.database:
+            self.log.error("Cannot generate base URL: host or database missing")
             raise ValueError("Host and database must be provided")
 
         # Check if host already has a protocol prefix
         host = self.host
         if host.startswith(("http://", "https://")):
+            self.log.debug("Host already contains protocol prefix: %s", host)
             # Keep the host as is without adding https://
             base_url = f"{host}/fmi/odata/v4/{self.database}"
         else:
+            self.log.debug("Adding https:// prefix to host: %s", host)
             # Add https:// if not present
             base_url = f"https://{host}/fmi/odata/v4/{self.database}"
 
+        self.log.info("Generated OData base URL: %s", base_url)
         return base_url
 
     def get_token(self) -> str:
@@ -157,10 +198,14 @@ class FileMakerHook(BaseHook):
 
         if self.auth_client is not None:
             token = self.auth_client.get_token()
-            # Add debugging
+            # Log token information securely
             if token:
-                self.log.info(f"Token received with length: {len(token)}")
-                self.log.info(f"Token prefix: {token[:20]}...")
+                self.log.info("Authentication token received successfully")
+                self.log.debug("Token received with length: %d", len(token))
+                # Only log a small prefix of the token for debugging
+                if len(token) > 5:
+                    prefix = token[:5]
+                    self.log.debug("Token prefix: %s***", prefix)
             else:
                 self.log.error("Empty token received from auth_client")
             return token
@@ -196,7 +241,9 @@ class FileMakerHook(BaseHook):
         self.validate_url_length(endpoint, params)
 
         # Execute request
-        self.log.info(f"Making request to: {endpoint}")
+        self.log.info("Making OData API request to: %s", endpoint)
+        if params:
+            self.log.debug("Request parameters: %s", ", ".join([f"{k}={v}" for k, v in params.items()]))
         response = requests.get(endpoint, headers=headers, params=params)
 
         # Check for errors
