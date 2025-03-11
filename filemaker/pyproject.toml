@@ -26,6 +26,10 @@ classifiers = [
     "License :: OSI Approved :: Apache Software License",
     "Operating System :: OS Independent",
 ]
+dynamic = ["entry-points"]
+
+[project.entry-points."apache_airflow_provider"]
+provider_info = "airflow.providers.filemaker:get_provider_info"
 
 [tool.black]
 line-length = 120

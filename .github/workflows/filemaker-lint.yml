@@ -96,6 +96,7 @@ jobs:
           cd filemaker
           isort --check src tests
           echo "status=$?" >> $GITHUB_OUTPUT
+
       - name: Determine overall success
         id: set_success
         shell: bash
