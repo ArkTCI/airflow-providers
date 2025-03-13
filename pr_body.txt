@@ -1,4 +1,4 @@
-## Release FileMaker Provider v2.1.2
+## Release FileMaker Provider v2.4.0
 
 This PR was automatically created by the CI/CD pipeline.
 
@@ -7,7 +7,7 @@ This PR was automatically created by the CI/CD pipeline.
 - Testing: ✅ Passed
 
 ### Changes:
-- Version bump to v2.1.2
+- Version bump to v2.4.0
 - Validation checks completed via dedicated workflows
 - Release is ready for PyPI publishing and Docker image generation
 
