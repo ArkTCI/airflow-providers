@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 # These would replace setup.py metadata
 name = "arktci-airflow-provider-filemaker"
-version = "2.1.0"
+version = "2.1.2"
 description = "Apache Airflow provider for FileMaker Cloud"
 readme = "README.md"
 requires-python = ">=3.8"
@@ -26,7 +26,6 @@ classifiers = [
     "License :: OSI Approved :: Apache Software License",
     "Operating System :: OS Independent",
 ]
-dynamic = ["entry-points"]
 
 [project.entry-points."apache_airflow_provider"]
 provider_info = "airflow.providers.filemaker:get_provider_info"
@@ -108,3 +107,20 @@ include = ["airflow.providers.*"]
 
 [bdist_wheel]
 universal = true 
+
+[tool.bump3version]
+current_version = "2.1.2"
+commit = false
+tag = false
+parse = "(?P<major>\\d+)\\.(?P<minor>\\d+)\\.(?P<patch>\\d+)"
+serialize = ["{major}.{minor}.{patch}"]
+
+[[tool.bump3version.files]]
+filename = "pyproject.toml"
+search = "version = \"{current_version}\""
+replace = "version = \"{new_version}\""
+
+[[tool.bump3version.files]]
+filename = "version.py"
+search = "VERSION = \"{current_version}\""
+replace = "VERSION = \"{new_version}\""

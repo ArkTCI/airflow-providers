@@ -28,17 +28,33 @@ jobs:
         uses: actions/checkout@v3
         with:
           ref: main
-      - name: Extract version
+          
+      - name: Extract version from pyproject.toml
         id: extract_version
         run: |
-          VERSION=$(grep -o '"[0-9]\+\.[0-9]\+\.[0-9]\+"' filemaker/version.py | tr -d '"')
-          echo "Version from version.py: $VERSION"
+          VERSION=$(grep -o 'version = "[0-9]\+\.[0-9]\+\.[0-9]\+"' filemaker/pyproject.toml | cut -d'"' -f2)
+          echo "Version from pyproject.toml: $VERSION"
           echo "version=$VERSION" >> $GITHUB_OUTPUT
+          
+      - name: Verify version consistency
+        run: |
+          PYPROJECT_VERSION=$(grep -o 'version = "[0-9]\+\.[0-9]\+\.[0-9]\+"' filemaker/pyproject.toml | cut -d'"' -f2)
+          if [ -f filemaker/version.py ]; then
+            VERSION_PY=$(grep -o '"[0-9]\+\.[0-9]\+\.[0-9]\+"' filemaker/version.py | tr -d '"')
+            if [ "$PYPROJECT_VERSION" != "$VERSION_PY" ]; then
+              echo "Warning: Version mismatch between pyproject.toml ($PYPROJECT_VERSION) and version.py ($VERSION_PY)"
+              echo "Updating version.py to match pyproject.toml"
+              echo "VERSION = \"$PYPROJECT_VERSION\"" > filemaker/version.py
+            fi
+          else
+            echo "VERSION = \"$PYPROJECT_VERSION\"" > filemaker/version.py
+            echo "Created version.py with version $PYPROJECT_VERSION"
+          fi
 
       - name: Check if version exists on PyPI
         id: check_version
         run: |
-          HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" https://pypi.org/pypi/apache-airflow-providers-filemaker/${{ steps.extract_version.outputs.version }}/json)
+          HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" https://pypi.org/pypi/arktci-airflow-provider-filemaker/${{ steps.extract_version.outputs.version }}/json)
           if [ "$HTTP_STATUS" == "200" ]; then
             echo "Version ${{ steps.extract_version.outputs.version }} already exists on PyPI"
             echo "exists=true" >> $GITHUB_OUTPUT
@@ -84,12 +100,12 @@ jobs:
       - name: Get version
         id: get_version
         run: |
-          VERSION=$(grep -o '"[0-9]\+\.[0-9]\+\.[0-9]\+"' filemaker/version.py | tr -d '"')
-          echo "Version from version.py: $VERSION"
+          VERSION=$(grep -o 'version = "[0-9]\+\.[0-9]\+\.[0-9]\+"' filemaker/pyproject.toml | cut -d'"' -f2)
+          echo "Version from pyproject.toml: $VERSION"
           echo "version=$VERSION" >> $GITHUB_OUTPUT
 
       - name: Build and push Docker image
-        if: needs.publish-to-pypi.outputs.version != ''
+        if: needs.publish-to-pypi.outputs.published == 'true'
         uses: docker/build-push-action@v4
         with:
           context: ./filemaker
