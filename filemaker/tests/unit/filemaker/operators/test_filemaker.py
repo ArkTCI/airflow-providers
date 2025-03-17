@@ -26,8 +26,7 @@ class TestFileMakerQueryOperator(unittest.TestCase):
         """Test execute method."""
         # Setup mock
         mock_hook = MagicMock()
-        mock_hook.get_base_url.return_value = "https://test-host/fmi/odata/v4/test-db"
-        mock_hook.get_odata_response.return_value = {"value": [{"id": 1}]}
+        mock_hook.get_records.return_value = {"value": [{"id": 1}]}
         mock_hook_class.return_value = mock_hook
 
         # Execute operator
@@ -39,20 +38,21 @@ class TestFileMakerQueryOperator(unittest.TestCase):
         # Assertions
         self.assertEqual(result, {"value": [{"id": 1}]})
         mock_hook_class.assert_called_once_with(filemaker_conn_id="test_conn_id")
-        mock_hook.get_base_url.assert_called_once()
-        mock_hook.get_odata_response.assert_called_once_with(
-            endpoint="https://test-host/fmi/odata/v4/test-db/test_endpoint", accept_format="application/json"
+        mock_hook.get_records.assert_called_once_with(
+            table="test_endpoint", page_size=100, max_pages=30, accept_format="application/json"
         )
 
 
 class TestFileMakerExtractOperator(unittest.TestCase):
     """Test class for FileMakerExtractOperator."""
 
-    @patch("airflow.providers.filemaker.operators.filemaker.FileMakerQueryOperator.execute")
-    def test_execute(self, mock_query_execute):
+    @patch("airflow.providers.filemaker.operators.filemaker.FileMakerHook")
+    def test_execute(self, mock_hook_class):
         """Test execute method."""
         # Setup mock
-        mock_query_execute.return_value = {"value": [{"id": 1}]}
+        mock_hook = MagicMock()
+        mock_hook.get_records.return_value = {"value": [{"id": 1}]}
+        mock_hook_class.return_value = mock_hook
 
         # Execute operator
         operator = FileMakerExtractOperator(
@@ -62,7 +62,10 @@ class TestFileMakerExtractOperator(unittest.TestCase):
 
         # Assertions
         self.assertEqual(result, {"value": [{"id": 1}]})
-        mock_query_execute.assert_called_once_with({})
+        mock_hook_class.assert_called_once_with(filemaker_conn_id="test_conn_id")
+        mock_hook.get_records.assert_called_once_with(
+            table="test_endpoint", page_size=50, max_pages=1, accept_format="application/json"
+        )
 
 
 class TestFileMakerSchemaOperator(unittest.TestCase):
