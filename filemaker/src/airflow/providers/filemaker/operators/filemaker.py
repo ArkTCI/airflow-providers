@@ -84,8 +84,8 @@ class FileMakerExtractOperator(BaseOperator):
     This operator extends the basic query functionality to handle common extraction
     patterns and save the results to a destination format/location.
 
-    :param endpoint: The OData endpoint to query
-    :type endpoint: str
+    :param table: The OData table to query
+    :type table: str
     :param filemaker_conn_id: The Airflow connection ID for FileMaker Cloud
     :type filemaker_conn_id: str
     :param output_path: Optional path to save the output
@@ -94,9 +94,11 @@ class FileMakerExtractOperator(BaseOperator):
     :type format: str
     :param accept_format: The accept header format for the OData API
     :type accept_format: str
+    :param hook: Optional FileMakerHook instance
+    :type hook: Optional[FileMakerHook]
     """
 
-    template_fields = ("endpoint", "output_path")
+    template_fields = ("table", "output_path")
     template_ext = ()
     ui_color = "#e8c1f0"  # Lighter purple than query operator
 
@@ -104,19 +106,21 @@ class FileMakerExtractOperator(BaseOperator):
     def __init__(
         self,
         *,
-        endpoint: str,
+        table: str,
         filemaker_conn_id: str = "filemaker_default",
         output_path: Optional[str] = None,
         format: str = "json",
         accept_format: str = "application/json",
+        hook: Optional[FileMakerHook] = None,
         **kwargs,
     ) -> None:
         super().__init__(**kwargs)
-        self.endpoint = endpoint
+        self.table = table
         self.filemaker_conn_id = filemaker_conn_id
         self.output_path = output_path
         self.format = format
         self.accept_format = accept_format
+        self.hook = hook
 
     def execute(self, context) -> Dict[str, Any]:
         """
@@ -126,25 +130,17 @@ class FileMakerExtractOperator(BaseOperator):
         :return: The extraction result data
         :rtype: Dict[str, Any]
         """
-        self.log.info(f"Extracting data from FileMaker Cloud endpoint: {self.endpoint}")
+        self.log.info(f"Extracting data from FileMaker Cloud endpoint: {self.table}")
 
-        # Extract just the table name from the endpoint, removing any leading/trailing slashes
-        table_name = self.endpoint.strip("/")
-
-        # If it contains a path, take only the last part which should be the table name
-        if "/" in table_name:
-            table_name = table_name.split("/")[-1]
-
-        self.log.info(f"Using table name: {table_name}")
-
-        # Use the hook directly instead of creating another operator
-        hook = FileMakerHook(filemaker_conn_id=self.filemaker_conn_id)
+        if self.hook is None and self.filemaker_conn_id is not None:
+            self.hook = FileMakerHook(filemaker_conn_id=self.filemaker_conn_id)
 
         # Execute query with safe parameters
-        result = hook.get_records(
-            table=table_name,
-            page_size=50,  # Use a reasonable page size
-            max_pages=1,  # Limit to one page initially
+        # Execute query with safe parameters
+        result = self.hook.get_records(
+            table=self.table,
+            page_size=100,  # Use a reasonable page size
+            max_pages=200,  # Limit to one page initially
             accept_format=self.accept_format,
         )
 
@@ -165,33 +161,36 @@ class FileMakerExtractOperator(BaseOperator):
         import json
         import os
 
-        # Create directory if it doesn't exist
-        if self.output_path:
-            os.makedirs(os.path.dirname(self.output_path), exist_ok=True)
+        # Skip if output_path is None or empty
+        if not self.output_path:
+            self.log.warning("No output path specified, skipping file write operation")
+            return
+
+        # Check if the directory path is not empty (to avoid errors with os.makedirs(''))
+        dir_path = os.path.dirname(self.output_path)
+        if dir_path:  # Only create directory if there's an actual path
+            os.makedirs(dir_path, exist_ok=True)
 
         self.log.info(f"Saving data to {self.output_path} in {self.format} format")
 
-        if self.output_path:
-            with open(self.output_path, "w") as f:
-                if self.format.lower() == "json":
-                    json.dump(data, f, indent=2)
-                elif self.format.lower() == "csv":
-                    # Handle CSV output - assumes data is a list of dictionaries
-                    if "value" in data and isinstance(data["value"], list):
-                        items = data["value"]
-                        if items:
-                            with open(self.output_path, "w", newline="") as f:
-                                writer = csv.DictWriter(f, fieldnames=items[0].keys())
-                                writer.writeheader()
-                                writer.writerows(items)
-                        else:
-                            self.log.warning("No items found in 'value' key to write to CSV")
+        with open(self.output_path, "w") as f:
+            if self.format.lower() == "json":
+                json.dump(data, f, indent=2)
+            elif self.format.lower() == "csv":
+                # Handle CSV output - assumes data is a list of dictionaries
+                if "value" in data and isinstance(data["value"], list):
+                    items = data["value"]
+                    if items:
+                        with open(self.output_path, "w", newline="") as f:
+                            writer = csv.DictWriter(f, fieldnames=items[0].keys())
+                            writer.writeheader()
+                            writer.writerows(items)
                     else:
-                        self.log.error("Data format not suitable for CSV output")
+                        self.log.warning("No items found in 'value' key to write to CSV")
                 else:
-                    self.log.error(f"Unsupported output format: {self.format}")
-        else:
-            self.log.warning("No output path specified, skipping file write operation")
+                    self.log.error("Data format not suitable for CSV output")
+            else:
+                self.log.error(f"Unsupported output format: {self.format}")
 
 
 class FileMakerSchemaOperator(BaseOperator):
