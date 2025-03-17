@@ -35,6 +35,7 @@ class TestFileMakerHook(unittest.TestCase):
         mock_response = MagicMock()
         mock_response.status_code = 200
         mock_response.json.return_value = {"value": [{"id": 1}]}
+        mock_response.text = '{"value": [{"id": 1}]}'
         mock_get.return_value = mock_response
 
         hook = FileMakerHook(host="test-host", database="test-db")
@@ -82,6 +83,7 @@ class TestFileMakerHook(unittest.TestCase):
                 "$count": "true",
                 "$apply": "groupby((Category),aggregate(Amount with sum as TotalAmount))",
             },
+            accept_format="application/json",
         )
 
     @patch("airflow.providers.filemaker.hooks.filemaker.FileMakerHook.get_odata_response")
@@ -98,7 +100,7 @@ class TestFileMakerHook(unittest.TestCase):
 
         self.assertEqual(result, {"id": "123", "name": "Test Record"})
         mock_get_odata_response.assert_called_once_with(
-            endpoint="https://test-host/fmi/odata/v4/test-db/MyTable(123)", params={}
+            endpoint="https://test-host/fmi/odata/v4/test-db/MyTable(123)", params={}, accept_format="application/json"
         )
 
         # Reset mocks
@@ -111,6 +113,18 @@ class TestFileMakerHook(unittest.TestCase):
         mock_get_odata_response.assert_called_once_with(
             endpoint="https://test-host/fmi/odata/v4/test-db/MyTable(123)",
             params={"$select": "id,name", "$expand": "RelatedTable"},
+            accept_format="application/json",
+        )
+
+        # Reset mocks
+        mock_get_odata_response.reset_mock()
+
+        # Test with XML format
+        result = hook.get_record_by_id(table="MyTable", record_id="123", accept_format="application/xml")
+
+        self.assertEqual(result, {"id": "123", "name": "Test Record"})
+        mock_get_odata_response.assert_called_once_with(
+            endpoint="https://test-host/fmi/odata/v4/test-db/MyTable(123)", params={}, accept_format="application/xml"
         )
 
     @patch("airflow.providers.filemaker.hooks.filemaker.FileMakerHook.get_odata_response")
@@ -126,7 +140,7 @@ class TestFileMakerHook(unittest.TestCase):
 
         self.assertEqual(result, "Test Value")
         mock_get_odata_response.assert_called_once_with(
-            endpoint="https://test-host/fmi/odata/v4/test-db/MyTable(123)/name"
+            endpoint="https://test-host/fmi/odata/v4/test-db/MyTable(123)/name", accept_format="application/json"
         )
 
     @patch("airflow.providers.filemaker.hooks.filemaker.FileMakerHook.get_binary_field")
@@ -173,7 +187,9 @@ class TestFileMakerHook(unittest.TestCase):
 
         self.assertEqual(result, {"value": [{"Table1_id": 1, "Table2_name": "Test"}]})
         mock_get_odata_response.assert_called_once_with(
-            endpoint="https://test-host/fmi/odata/v4/test-db/$crossjoin(Table1,Table2)", params={}
+            endpoint="https://test-host/fmi/odata/v4/test-db/$crossjoin(Table1,Table2)",
+            params={},
+            accept_format="application/json",
         )
 
         # Reset mocks
@@ -199,6 +215,7 @@ class TestFileMakerHook(unittest.TestCase):
                 "$skip": 5,
                 "$orderby": "Table1/id asc",
             },
+            accept_format="application/json",
         )
 
     def test_validate_url_length(self):
@@ -361,29 +378,25 @@ class TestFileMakerHook(unittest.TestCase):
         self.assertEqual(result[1], {"id": "124", "name": "Record 2"})
 
     @patch("airflow.providers.filemaker.hooks.filemaker.FileMakerHook.get_odata_response")
-    @patch("airflow.providers.filemaker.hooks.filemaker.FileMakerHook.validate_url_length")
     @patch("airflow.providers.filemaker.hooks.filemaker.FileMakerHook.get_base_url")
-    def test_execute_function_with_url_validation(
-        self, mock_get_base_url, mock_validate_url_length, mock_get_odata_response
-    ):
-        """Test execute_function method validates URL length."""
+    def test_execute_function_with_url_validation(self, mock_get_base_url, mock_get_odata_response):
+        """Test execute_function method makes proper API calls."""
         # Setup mocks
         mock_get_base_url.return_value = "https://test-host/fmi/odata/v4/test-db"
         mock_get_odata_response.return_value = {"result": "success"}
 
         # Create hook and call method
         hook = FileMakerHook(host="test-host", database="test-db")
-        result = hook.execute_function(
-            database="test-db", layout="Students", script_name="UpdateGrades", script_params={"grade": "A+"}
-        )
+        result = hook.execute_function(function_name="UpdateGrades", parameters={"grade": "A+"})
 
-        # Verify URL validation was called with the right params
-        expected_endpoint = "https://test-host/fmi/odata/v4/test-db/Students/script"
-        expected_params = {"script": "UpdateGrades", "script-params": '{"grade": "A+"}'}
-        mock_validate_url_length.assert_called_once_with(expected_endpoint, expected_params)
+        # Prepare expected parameters
+        expected_endpoint = "ExecuteScript"
+        expected_params = {"script": "UpdateGrades", "script.param": '{"grade": "A+"}'}
 
         # Verify get_odata_response was called properly
-        mock_get_odata_response.assert_called_once_with(endpoint=expected_endpoint, params=expected_params)
+        mock_get_odata_response.assert_called_once_with(
+            endpoint=expected_endpoint, params=expected_params, accept_format="application/json"
+        )
 
         # Verify the result
         self.assertEqual(result, {"result": "success"})

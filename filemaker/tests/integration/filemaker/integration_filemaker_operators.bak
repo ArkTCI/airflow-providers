@@ -16,8 +16,8 @@ from unittest import skipIf
 from airflow.models import DAG
 from airflow.utils import timezone
 
-from airflow.providers.filemaker.operators.filemaker import FileMakerQueryOperator
 from airflow.providers.filemaker.hooks.filemaker import FileMakerHook
+from airflow.providers.filemaker.operators.filemaker import FileMakerQueryOperator
 
 
 @skipIf(
@@ -67,7 +67,7 @@ class TestFileMakerOperators(unittest.TestCase):
         )
 
         # Print hook configuration for debugging
-        print(f"Hook configuration:")
+        print("Hook configuration:")
         print(f"  Host: {hook.host}")
         print(f"  Database: {hook.database}")
         print(f"  Username: {hook.username}")
@@ -104,7 +104,6 @@ class TestFileMakerOperators(unittest.TestCase):
 
             # Execute the operator
             result = operator.execute(context={})
-            print("Result: ", result)
             self.assertIsNotNone(result)
             print(f"Operator query successful with XML format! Response length: {len(result)}")
 
