@@ -34,14 +34,16 @@ class FileMakerQueryOperator(BaseOperator):
         self,
         *,
         endpoint: str,
-        filemaker_conn_id: str = "filemaker_default",
         accept_format: str = "application/json",
+        filemaker_conn_id: str = "filemaker_default",
+        hook: Optional[FileMakerHook] = None,
         **kwargs,
     ) -> None:
         super().__init__(**kwargs)
         self.endpoint = endpoint
         self.filemaker_conn_id = filemaker_conn_id
         self.accept_format = accept_format
+        self.hook = hook
 
     def execute(self, context) -> Dict[str, Any]:
         """
@@ -52,20 +54,25 @@ class FileMakerQueryOperator(BaseOperator):
         :rtype: Dict[str, Any]
         """
         self.log.info(f"Executing OData query on endpoint: {self.endpoint}")
+        if self.hook is None and self.filemaker_conn_id is not None:
+            self.hook = FileMakerHook(filemaker_conn_id=self.filemaker_conn_id)
 
-        hook = FileMakerHook(filemaker_conn_id=self.filemaker_conn_id)
-        base_url = hook.get_base_url()
+        # Extract just the table name from the endpoint, removing any leading/trailing slashes
+        table_name = self.endpoint.strip("/")
 
-        # Build full URL - handling whether endpoint already starts with '/'
-        if self.endpoint.startswith("/"):
-            full_url = f"{base_url}{self.endpoint}"
-        else:
-            full_url = f"{base_url}/{self.endpoint}"
+        # If it contains a path, take only the last part which should be the table name
+        if "/" in table_name:
+            table_name = table_name.split("/")[-1]
 
-        self.log.info(f"Full URL: {full_url}")
+        self.log.info(f"Using table name: {table_name}")
 
-        # Execute query
-        result = hook.get_odata_response(endpoint=full_url, accept_format=self.accept_format)
+        # Execute query with the proper table name parameter
+        result = self.hook.get_records(
+            table=table_name,
+            page_size=100,  # Use a reasonable page size
+            max_pages=30,  # Limit to one page to prevent endless loops
+            accept_format=self.accept_format,
+        )
 
         return result
 
@@ -121,15 +128,25 @@ class FileMakerExtractOperator(BaseOperator):
         """
         self.log.info(f"Extracting data from FileMaker Cloud endpoint: {self.endpoint}")
 
-        # Use the query operator to fetch data
-        query_op = FileMakerQueryOperator(
-            task_id=f"{self.task_id}_query",
-            endpoint=self.endpoint,
-            filemaker_conn_id=self.filemaker_conn_id,
+        # Extract just the table name from the endpoint, removing any leading/trailing slashes
+        table_name = self.endpoint.strip("/")
+
+        # If it contains a path, take only the last part which should be the table name
+        if "/" in table_name:
+            table_name = table_name.split("/")[-1]
+
+        self.log.info(f"Using table name: {table_name}")
+
+        # Use the hook directly instead of creating another operator
+        hook = FileMakerHook(filemaker_conn_id=self.filemaker_conn_id)
+
+        # Execute query with safe parameters
+        result = hook.get_records(
+            table=table_name,
+            page_size=50,  # Use a reasonable page size
+            max_pages=1,  # Limit to one page initially
             accept_format=self.accept_format,
         )
-
-        result = query_op.execute(context)
 
         # Save output if path is specified
         if self.output_path:
@@ -707,8 +724,15 @@ class FileMakerToS3Operator(BaseOperator):
         """
         import tempfile
 
+        # Extract just the table name from the endpoint, removing any leading/trailing slashes
+        table_name = self.endpoint.strip("/")
+
+        # If it contains a path, take only the last part which should be the table name
+        if "/" in table_name:
+            table_name = table_name.split("/")[-1]
+
         self.log.info(
-            f"Extracting data from FileMaker table '{self.endpoint}' "
+            f"Extracting data from FileMaker table '{table_name}' "
             f"and uploading to S3: s3://{self.s3_bucket}/{self.s3_key}"
         )
 
@@ -717,18 +741,22 @@ class FileMakerToS3Operator(BaseOperator):
         s3_hook = S3Hook(aws_conn_id=self.aws_conn_id)
 
         # Create parameters for the query
-        params = {}
+        query_params = {}
         if self.filter_query:
-            params["$filter"] = self.filter_query
+            query_params["filter_query"] = self.filter_query
         if self.select:
-            params["$select"] = self.select
+            query_params["select"] = self.select
         if self.expand:
-            params["$expand"] = self.expand
+            query_params["expand"] = self.expand
         if self.top:
-            params["$top"] = self.top
+            query_params["top"] = self.top
 
-        # Get data from FileMaker
-        data = filemaker_hook.get_records(table=self.endpoint, **params)
+        # Additional parameters for safety and efficiency
+        query_params["page_size"] = min(self.batch_size, 1000)  # Limit to reasonable page size
+        query_params["max_pages"] = 10  # Set a reasonable limit on pages
+
+        # Get data from FileMaker with proper parameters
+        data = filemaker_hook.get_records(table=table_name, **query_params)
 
         # Convert data to the requested format
         with tempfile.NamedTemporaryFile(mode="w+", suffix=f".{self.file_format}") as tmp:
@@ -777,3 +805,72 @@ class FileMakerToS3Operator(BaseOperator):
             "format": self.file_format,
             "source": self.endpoint,
         }
+
+
+class FileMakerRawOperator(BaseOperator):
+    """
+    Executes a raw request to the specified endpoint with the given parameters.
+
+    :param endpoint: The endpoint to execute the request to
+    :type endpoint: str
+    :param filemaker_conn_id: The Airflow connection ID for FileMaker Cloud
+    :type filemaker_conn_id: str
+    :param accept_format: The accept header format for the OData API
+    :type accept_format: str
+    :param params: Dictionary of parameters to pass to the endpoint
+    :type params: Dict[str, Any]
+    """
+
+    template_fields = ("endpoint", "params")
+    template_ext = ()
+    ui_color = "#f0e3c2"  # Light orange
+
+    @apply_defaults
+    def __init__(
+        self,
+        *,
+        endpoint: str,
+        filemaker_conn_id: str = "filemaker_default",
+        accept_format: str = "application/json",
+        params: Dict[str, Any] = None,
+        **kwargs,
+    ) -> None:
+        super().__init__(**kwargs)
+        self.endpoint = endpoint
+        self.filemaker_conn_id = filemaker_conn_id
+        self.accept_format = accept_format
+        self.params = params
+
+    def execute(self, context) -> Any:
+        """
+        Execute a request to the specified endpoint with the given parameters.
+
+        :param context: The task context
+        :return: The raw API response
+        :rtype: Any
+        """
+        self.log.info(f"Executing raw request to endpoint: {self.endpoint}")
+
+        # Initialize hook if not already initialized
+        hook = FileMakerHook(filemaker_conn_id=self.filemaker_conn_id)
+
+        # Ensure we have the base URL
+        base_url = hook.get_base_url()
+
+        # Build full URL - handling whether endpoint already has proper structure
+        if self.endpoint.startswith("http"):
+            # Endpoint is already a full URL
+            full_url = self.endpoint
+        elif self.endpoint.startswith("/"):
+            # Endpoint starts with '/' - avoid double slash
+            full_url = f"{base_url}{self.endpoint}"
+        else:
+            # Standard case - append to base URL with a slash
+            full_url = f"{base_url}/{self.endpoint}"
+
+        self.log.info(f"Full URL: {full_url}")
+
+        # Get response with validation
+        response = hook.get_odata_response(endpoint=full_url, params=self.params, accept_format=self.accept_format)
+
+        return response
