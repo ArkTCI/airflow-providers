@@ -17,7 +17,7 @@ from airflow.models import DAG
 from airflow.utils import timezone
 
 from airflow.providers.filemaker.hooks.filemaker import FileMakerHook
-from airflow.providers.filemaker.operators.filemaker import FileMakerQueryOperator
+from airflow.providers.filemaker.operators.filemaker import FileMakerExtractOperator
 
 
 @skipIf(
@@ -88,26 +88,38 @@ class TestFileMakerOperators(unittest.TestCase):
         table_name = "_STUDENTS"
         print(f"Querying table: {table_name}")
 
-        # Handle JSON or XML response approp
-        # Now try with the operator using XML format
-        print("\nTesting with operator using XML format...")
+        # Now try with the operator using JSON format
+        print("\nTesting with operator using JSON format...")
         try:
             # Create a new operator with the connection parameters directly
-            operator = FileMakerQueryOperator(
+            operator = FileMakerExtractOperator(
                 task_id="test_query_students",
-                endpoint="_STUDENTS",
+                table="_STUDENTS",
                 filemaker_conn_id=None,
                 hook=hook,  # Don't use a connection ID
-                accept_format="application/json",  # Request XML instead of JSON
+                accept_format="application/json",
+                output_path="test_output.json",
+                format="json",  # Using JSON format
                 dag=self.dag,
             )
 
             # Execute the operator
             result = operator.execute(context={})
             self.assertIsNotNone(result)
-            print(f"Operator query successful with XML format! Response length: {len(result)}")
 
-            # Check if we got XML ba
+            # Print the length of the dictionary and the number of records
+            print(f"Query successful with JSON format! Response has {len(result)} top-level keys")
+            print(f"Result keys: {list(result.keys())}")
+            if isinstance(result, dict) and "value" in result:
+                record_count = len(result["value"])
+                print(f"Found {record_count} records in the result['value'] array")
+                print(f"First record has {len(result['value'][0]) if record_count > 0 else 'N/A'} fields")
+                if record_count > 0:
+                    # Print some example field names from the first record
+                    print(f"Sample fields: {list(result['value'][0].keys())[:5]}")
+            else:
+                print(f"Result structure: {type(result)}")
+
         except Exception as e:
             self.fail(f"Direct hook query failed with error: {str(e)}")
 

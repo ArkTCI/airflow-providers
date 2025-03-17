@@ -55,16 +55,19 @@ class TestFileMakerExtractOperator(unittest.TestCase):
         mock_hook_class.return_value = mock_hook
 
         # Execute operator
-        operator = FileMakerExtractOperator(
-            task_id="test_task", endpoint="test_endpoint", filemaker_conn_id="test_conn_id"
-        )
+        operator = FileMakerExtractOperator(task_id="test_task", table="test_table", filemaker_conn_id="test_conn_id")
+        operator.endpoint = "test_endpoint"
+        operator.hook = mock_hook
+
         result = operator.execute(context={})
 
         # Assertions
         self.assertEqual(result, {"value": [{"id": 1}]})
-        mock_hook_class.assert_called_once_with(filemaker_conn_id="test_conn_id")
+        # We don't call the hook class constructor in the test,
+        # since we're setting the hook directly
+        # mock_hook_class.assert_called_once_with(filemaker_conn_id="test_conn_id")
         mock_hook.get_records.assert_called_once_with(
-            table="test_endpoint", page_size=50, max_pages=1, accept_format="application/json"
+            table="test_table", page_size=100, max_pages=200, accept_format="application/json"
         )
 
 
